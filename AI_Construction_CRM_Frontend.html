@@ -1,0 +1,1188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Site Intelligence — AI Construction CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --blue-deep:#0c2033;
+    --blue-panel:#0f2c44;
+    --grid-line:rgba(122,178,204,0.10);
+    --grid-line-strong:rgba(122,178,204,0.22);
+    --cyan:#7fb8d6;
+    --cyan-bright:#a9d4ea;
+    --paper:#f4f0e4;
+    --paper-dim:#e9e3d2;
+    --ink:#132133;
+    --ink-soft:#4d5c6b;
+    --orange:#ff6a3d;
+    --orange-dim:#e0572a;
+    --green:#4f9d78;
+    --amber:#d99a35;
+    --red:#d1493f;
+    --sidebar-w:224px;
+    --radius:2px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family:'Inter', sans-serif;
+    background:var(--blue-deep);
+    color:var(--paper);
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size:28px 28px;
+    min-height:100vh;
+    overflow-x:hidden;
+  }
+  ::selection{background:var(--orange); color:#fff;}
+  ::-webkit-scrollbar{width:10px; height:10px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:var(--grid-line-strong); border-radius:5px;}
+
+  a, button{font-family:inherit;}
+
+  /* ---------- layout shell ---------- */
+  #app{display:flex; min-height:100vh;}
+
+  /* ---------- sidebar ---------- */
+  #sidebar{
+    width:var(--sidebar-w);
+    flex:0 0 var(--sidebar-w);
+    background:var(--blue-panel);
+    border-right:1px solid var(--grid-line-strong);
+    display:flex; flex-direction:column;
+    position:sticky; top:0; height:100vh;
+  }
+  .brand{
+    padding:22px 20px 18px;
+    border-bottom:1px solid var(--grid-line-strong);
+  }
+  .brand-mark{
+    display:flex; align-items:center; gap:9px;
+  }
+  .brand-mark svg{flex:0 0 auto;}
+  .brand-title{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:14.5px;
+    font-weight:700;
+    letter-spacing:0.02em;
+    line-height:1.2;
+    color:var(--paper);
+  }
+  .brand-sub{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:9.5px;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--cyan);
+    margin-top:5px;
+  }
+  nav#modnav{flex:1; overflow-y:auto; padding:14px 0;}
+  .nav-group-label{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:9px;
+    letter-spacing:0.16em;
+    text-transform:uppercase;
+    color:var(--ink-soft);
+    padding:14px 20px 6px;
+  }
+  .nav-item{
+    display:flex; align-items:center; gap:10px;
+    width:100%;
+    padding:8px 20px;
+    background:none; border:none;
+    color:var(--cyan);
+    font-size:12.5px;
+    font-weight:500;
+    letter-spacing:0.01em;
+    text-align:left;
+    cursor:pointer;
+    border-left:2px solid transparent;
+    position:relative;
+    transition:background .12s ease, color .12s ease;
+  }
+  .nav-item svg{flex:0 0 auto; opacity:.85;}
+  .nav-item:hover{background:rgba(122,178,204,0.06); color:var(--paper);}
+  .nav-item.active{
+    color:var(--paper);
+    background:rgba(255,106,61,0.09);
+    border-left-color:var(--orange);
+  }
+  .nav-item .count{
+    margin-left:auto;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10px;
+    color:var(--ink-soft);
+  }
+  .sidebar-foot{
+    padding:14px 20px 18px;
+    border-top:1px solid var(--grid-line-strong);
+    font-family:'IBM Plex Mono', monospace;
+    font-size:9.5px;
+    color:var(--ink-soft);
+    letter-spacing:0.04em;
+  }
+  .sidebar-foot .dot{color:var(--green); margin-right:6px;}
+
+  /* ---------- main ---------- */
+  #main{flex:1; min-width:0; display:flex; flex-direction:column;}
+  #topbar{
+    height:60px;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 26px;
+    border-bottom:1px solid var(--grid-line-strong);
+    background:rgba(12,32,51,0.85);
+    backdrop-filter:blur(6px);
+    position:sticky; top:0; z-index:20;
+  }
+  .topbar-left{display:flex; align-items:center; gap:14px;}
+  .topbar-title{font-family:'Space Grotesk', sans-serif; font-size:16px; font-weight:600;}
+  .topbar-breadcrumb{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--ink-soft);
+  }
+  .topbar-right{display:flex; align-items:center; gap:10px;}
+  .tenant-chip{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10.5px;
+    color:var(--cyan);
+    border:1px solid var(--grid-line-strong);
+    padding:6px 10px;
+    border-radius:var(--radius);
+    letter-spacing:.03em;
+  }
+  .btn{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    letter-spacing:.03em;
+    padding:8px 14px;
+    border-radius:var(--radius);
+    border:1px solid var(--grid-line-strong);
+    background:transparent;
+    color:var(--paper);
+    cursor:pointer;
+    transition:all .12s ease;
+  }
+  .btn:hover{border-color:var(--cyan); color:var(--cyan-bright);}
+  .btn-primary{
+    background:var(--orange);
+    border-color:var(--orange);
+    color:#fff;
+    font-weight:600;
+  }
+  .btn-primary:hover{background:var(--orange-dim); border-color:var(--orange-dim); color:#fff;}
+  .btn-sm{padding:5px 10px; font-size:10px;}
+  .btn-ghost-danger{border-color:transparent; color:var(--red);}
+  .btn-ghost-danger:hover{border-color:var(--red); color:var(--red);}
+
+  #content{flex:1; padding:26px 30px 60px;}
+
+  /* ---------- blueprint paper panel (signature element) ---------- */
+  .sheet{
+    position:relative;
+    background:var(--paper);
+    color:var(--ink);
+    border-radius:var(--radius);
+    padding:22px 24px;
+    margin-bottom:20px;
+    box-shadow:0 12px 28px -14px rgba(0,0,0,0.45);
+  }
+  .sheet::before, .sheet::after,
+  .sheet .cmk1, .sheet .cmk2{
+    content:''; position:absolute; width:11px; height:11px;
+    border-color:var(--orange); pointer-events:none;
+  }
+  .sheet::before{top:6px; left:6px; border-top:2px solid var(--orange); border-left:2px solid var(--orange);}
+  .sheet::after{top:6px; right:6px; border-top:2px solid var(--orange); border-right:2px solid var(--orange);}
+  .sheet .cmk1{bottom:6px; left:6px; border-bottom:2px solid var(--orange); border-left:2px solid var(--orange);}
+  .sheet .cmk2{bottom:6px; right:6px; border-bottom:2px solid var(--orange); border-right:2px solid var(--orange);}
+
+  .sheet-label{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:9.5px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--orange-dim);
+    margin-bottom:4px;
+  }
+  .sheet-title{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:18px;
+    font-weight:700;
+    margin-bottom:14px;
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    flex-wrap:wrap;
+  }
+  .sheet-title .sub{
+    font-family:'Inter';
+    font-size:12px; font-weight:500;
+    color:var(--ink-soft);
+  }
+
+  /* ---------- grid helpers ---------- */
+  .grid{display:grid; gap:16px;}
+  .grid-4{grid-template-columns:repeat(4,1fr);}
+  .grid-3{grid-template-columns:repeat(3,1fr);}
+  .grid-2{grid-template-columns:repeat(2,1fr);}
+  @media(max-width:1200px){.grid-4{grid-template-columns:repeat(2,1fr);} .grid-3{grid-template-columns:repeat(2,1fr);}}
+  @media(max-width:760px){.grid-4,.grid-3,.grid-2{grid-template-columns:1fr;}}
+
+  /* ---------- KPI cards ---------- */
+  .kpi{
+    background:var(--blue-panel);
+    border:1px solid var(--grid-line-strong);
+    border-radius:var(--radius);
+    padding:16px 18px;
+  }
+  .kpi-label{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:9.5px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--cyan);
+  }
+  .kpi-value{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:26px; font-weight:700;
+    margin-top:8px;
+  }
+  .kpi-delta{font-size:11px; margin-top:6px; color:var(--ink-soft);}
+  .kpi-delta.up{color:var(--green);}
+  .kpi-delta.down{color:var(--red);}
+
+  /* ---------- AI cards ---------- */
+  .ai-card{
+    background:var(--blue-panel);
+    border:1px solid var(--grid-line-strong);
+    border-left:3px solid var(--cyan);
+    border-radius:var(--radius);
+    padding:14px 16px;
+  }
+  .ai-card.risk-high{border-left-color:var(--red);}
+  .ai-card.risk-med{border-left-color:var(--amber);}
+  .ai-card.risk-low{border-left-color:var(--green);}
+  .ai-card-head{display:flex; align-items:center; gap:8px; margin-bottom:8px;}
+  .ai-tag{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:9px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--orange);
+    border:1px solid rgba(255,106,61,0.4);
+    padding:2px 6px; border-radius:2px;
+  }
+  .ai-card-title{font-family:'Space Grotesk',sans-serif; font-size:13px; font-weight:600;}
+  .ai-card-body{font-size:12px; color:#cdd8e0; line-height:1.5;}
+  .ai-card-body b{color:#fff;}
+
+  /* ---------- tables ---------- */
+  table{width:100%; border-collapse:collapse; font-size:12.5px;}
+  thead th{
+    text-align:left;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:9.5px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--ink-soft);
+    padding:8px 10px;
+    border-bottom:1.5px solid var(--paper-dim);
+  }
+  tbody td{
+    padding:10px 10px;
+    border-bottom:1px solid var(--paper-dim);
+    color:var(--ink);
+    vertical-align:middle;
+  }
+  tbody tr:hover{background:rgba(255,106,61,0.05);}
+  tbody tr:last-child td{border-bottom:none;}
+  .cell-mono{font-family:'IBM Plex Mono', monospace; font-size:11.5px;}
+
+  .badge{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:9.5px; letter-spacing:.05em; text-transform:uppercase;
+    padding:3px 8px; border-radius:20px;
+    display:inline-block;
+  }
+  .badge-green{background:rgba(79,157,120,0.15); color:#2f7752;}
+  .badge-amber{background:rgba(217,154,53,0.18); color:#9c6c1c;}
+  .badge-red{background:rgba(209,73,63,0.15); color:#a83329;}
+  .badge-blue{background:rgba(122,178,204,0.18); color:#2a6f8f;}
+  .badge-gray{background:rgba(77,92,107,0.14); color:#4d5c6b;}
+
+  .progress-track{
+    width:100%; height:6px; background:var(--paper-dim);
+    border-radius:6px; overflow:hidden;
+  }
+  .progress-fill{height:100%; background:var(--orange); border-radius:6px;}
+  .progress-fill.green{background:var(--green);}
+  .progress-fill.red{background:var(--red);}
+
+  /* ---------- forms / modal ---------- */
+  .toolbar{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .search-input{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11.5px;
+    background:var(--blue-panel);
+    border:1px solid var(--grid-line-strong);
+    color:var(--paper);
+    padding:8px 12px;
+    border-radius:var(--radius);
+    min-width:200px;
+  }
+  .search-input::placeholder{color:var(--ink-soft);}
+
+  #modal-backdrop{
+    position:fixed; inset:0; background:rgba(6,16,26,0.72);
+    display:none; align-items:center; justify-content:center;
+    z-index:100; padding:20px;
+  }
+  #modal-backdrop.open{display:flex;}
+  #modal{
+    background:var(--paper); color:var(--ink);
+    width:100%; max-width:480px;
+    border-radius:var(--radius);
+    padding:24px;
+    position:relative;
+    max-height:88vh; overflow-y:auto;
+  }
+  #modal .sheet-title{margin-bottom:16px;}
+  .field{margin-bottom:13px;}
+  .field label{
+    display:block; font-family:'IBM Plex Mono', monospace;
+    font-size:9.5px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--ink-soft); margin-bottom:5px;
+  }
+  .field input, .field select, .field textarea{
+    width:100%; padding:8px 10px;
+    border:1px solid var(--paper-dim);
+    background:#fff;
+    border-radius:2px;
+    font-size:13px; font-family:inherit; color:var(--ink);
+  }
+  .field textarea{resize:vertical; min-height:60px;}
+  .modal-actions{display:flex; justify-content:flex-end; gap:10px; margin-top:18px;}
+  .modal-close{
+    position:absolute; top:16px; right:18px;
+    background:none; border:none; cursor:pointer;
+    font-size:18px; color:var(--ink-soft); line-height:1;
+  }
+
+  /* ---------- misc ---------- */
+  .empty{
+    text-align:center; padding:36px 10px; color:var(--ink-soft); font-size:12.5px;
+  }
+  .flex-between{display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;}
+  .muted{color:var(--ink-soft);}
+  .section-gap{margin-top:22px;}
+  .chart-wrap{width:100%; overflow-x:auto;}
+  .mini-note{
+    font-family:'IBM Plex Mono', monospace; font-size:10px; color:var(--ink-soft);
+    margin-top:10px; letter-spacing:.02em;
+  }
+  .view{display:none;}
+  .view.active{display:block; animation:fadein .18s ease;}
+  @keyframes fadein{from{opacity:0; transform:translateY(3px);} to{opacity:1; transform:none;}}
+  .avatar-dot{
+    width:7px; height:7px; border-radius:50%; display:inline-block; margin-right:6px;
+  }
+  .toast{
+    position:fixed; bottom:20px; right:20px;
+    background:var(--blue-panel); border:1px solid var(--cyan);
+    color:var(--paper); padding:11px 16px; border-radius:2px;
+    font-family:'IBM Plex Mono', monospace; font-size:11.5px;
+    box-shadow:0 10px 24px -10px rgba(0,0,0,.6);
+    z-index:200; opacity:0; transform:translateY(6px);
+    transition:all .2s ease; pointer-events:none;
+  }
+  .toast.show{opacity:1; transform:translateY(0);}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <aside id="sidebar">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+          <rect x="1" y="1" width="24" height="24" stroke="#ff6a3d" stroke-width="1.4"/>
+          <path d="M6 20V10L13 5L20 10V20" stroke="#7fb8d6" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M10 20V14H16V20" stroke="#7fb8d6" stroke-width="1.4"/>
+        </svg>
+        <div>
+          <div class="brand-title">Site Intelligence</div>
+          <div class="brand-sub">AI Construction CRM</div>
+        </div>
+      </div>
+    </div>
+    <nav id="modnav">
+      <div class="nav-group-label">Overview</div>
+      <button class="nav-item active" data-view="dashboard">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="5" height="5" stroke="currentColor"/><rect x="8" y="1" width="5" height="5" stroke="currentColor"/><rect x="1" y="8" width="5" height="5" stroke="currentColor"/><rect x="8" y="8" width="5" height="5" stroke="currentColor"/></svg>
+        Dashboard
+      </button>
+
+      <div class="nav-group-label">Relationships</div>
+      <button class="nav-item" data-view="clients">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="5" cy="4.5" r="2.2" stroke="currentColor"/><path d="M1 13c0-2.5 1.8-4 4-4s4 1.5 4 4" stroke="currentColor"/><path d="M9 5.2a2 2 0 110 3.8" stroke="currentColor"/><path d="M9.5 9c2 0 3.5 1.4 3.5 4" stroke="currentColor"/></svg>
+        Clients <span class="count" id="nc-clients"></span>
+      </button>
+      <button class="nav-item" data-view="contractors">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 12l3-3 2 2 5-5" stroke="currentColor"/><path d="M9 5h3v3" stroke="currentColor"/></svg>
+        Contractors <span class="count" id="nc-contractors"></span>
+      </button>
+
+      <div class="nav-group-label">Execution</div>
+      <button class="nav-item" data-view="projects">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="2" width="12" height="10" stroke="currentColor"/><path d="M1 5.5h12" stroke="currentColor"/></svg>
+        Projects <span class="count" id="nc-projects"></span>
+      </button>
+      <button class="nav-item" data-view="sites">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1L1 12h12L7 1z" stroke="currentColor" stroke-linejoin="round"/><path d="M7 5v4" stroke="currentColor"/></svg>
+        Sites <span class="count" id="nc-sites"></span>
+      </button>
+      <button class="nav-item" data-view="progress">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 8l3 3 8-8" stroke="currentColor"/></svg>
+        Daily Progress <span class="count" id="nc-progress"></span>
+      </button>
+
+      <div class="nav-group-label">Resources</div>
+      <button class="nav-item" data-view="materials">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="4" width="12" height="8" stroke="currentColor"/><path d="M1 4l6-3 6 3" stroke="currentColor"/></svg>
+        Material Stock <span class="count" id="nc-materials"></span>
+      </button>
+      <button class="nav-item" data-view="labour">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="4" r="2" stroke="currentColor"/><path d="M2.5 12c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4" stroke="currentColor"/></svg>
+        Labour <span class="count" id="nc-labour"></span>
+      </button>
+      <button class="nav-item" data-view="equipment">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 12l4-4M9 2l3 3-6.5 6.5L2 8 9 2z" stroke="currentColor" stroke-linejoin="round"/></svg>
+        Equipment <span class="count" id="nc-equipment"></span>
+      </button>
+
+      <div class="nav-group-label">Finance</div>
+      <button class="nav-item" data-view="billing">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="2" width="12" height="10" stroke="currentColor"/><path d="M4 6h6M4 8.5h4" stroke="currentColor"/></svg>
+        Billing <span class="count" id="nc-billing"></span>
+      </button>
+      <button class="nav-item" data-view="payments">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="3" width="12" height="8" stroke="currentColor"/><circle cx="7" cy="7" r="1.6" stroke="currentColor"/></svg>
+        Payments <span class="count" id="nc-payments"></span>
+      </button>
+    </nav>
+    <div class="sidebar-foot">
+      <span class="dot">●</span>ALL SYSTEMS NOMINAL<br>
+      <span style="opacity:.6">v1.0 · MULTI-TENANT DEMO</span>
+    </div>
+  </aside>
+
+  <div id="main">
+    <div id="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="topbar-title" id="topbar-title">Dashboard</div>
+          <div class="topbar-breadcrumb" id="topbar-crumb">Portfolio Overview</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <span class="tenant-chip">⌂ Ashoka Builders &amp; Co.</span>
+        <button class="btn" id="btn-refresh-ai">↻ Refresh AI</button>
+        <button class="btn btn-primary" id="btn-quick-add">+ New</button>
+      </div>
+    </div>
+    <div id="content"></div>
+  </div>
+</div>
+
+<div id="modal-backdrop">
+  <div id="modal"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* =======================================================
+   STATE
+======================================================= */
+const uid = (() => { let n = 1000; return () => 'ID-' + (n++); })();
+const todayISO = () => new Date().toISOString().slice(0,10);
+const daysBetween = (a,b) => Math.round((new Date(b) - new Date(a)) / 86400000);
+const fmtMoney = n => '₹' + Number(n).toLocaleString('en-IN');
+const fmtDate = d => new Date(d).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+
+const state = {
+  clients: [
+    {id:uid(), name:'Devkar Realty Pvt. Ltd.', contact:'Sanjay Devkar', phone:'+91 98220 11234', email:'sanjay@devkarrealty.in', address:'Gangapur Road, Nashik', projects:2, lastContact:'2026-07-20'},
+    {id:uid(), name:'Nashik Municipal Corp — Housing Wing', contact:'Er. Meena Kulkarni', phone:'+91 98500 44210', email:'meena.k@nmc.gov.in', address:'Rajiv Gandhi Bhavan, Nashik', projects:1, lastContact:'2026-07-15'},
+    {id:uid(), name:'Sahyadri Warehousing LLP', contact:'Prashant Wagh', phone:'+91 97650 89012', email:'prashant@sahyadriwh.com', address:'Sinnar MIDC, Nashik', projects:1, lastContact:'2026-07-24'},
+  ],
+  contractors: [
+    {id:uid(), name:'Kadam Structural Works', trade:'RCC & Structural', phone:'+91 90210 33456', status:'Active', paid:1450000, due:220000},
+    {id:uid(), name:'Bright Line Electricals', trade:'Electrical', phone:'+91 91580 22110', status:'Active', paid:380000, due:60000},
+    {id:uid(), name:'AquaFlow Plumbing', trade:'Plumbing & Sanitation', phone:'+91 96370 77812', status:'On Hold', paid:210000, due:0},
+  ],
+  projects: [
+    {id:uid(), name:'Devkar Heights — Phase 2', client:'Devkar Realty Pvt. Ltd.', start:'2026-02-01', target:'2026-11-30', budget:9500000, spend:5230000, progress:52, status:'On Track'},
+    {id:uid(), name:'NMC Affordable Housing Block C', client:'Nashik Municipal Corp — Housing Wing', start:'2025-12-10', target:'2026-08-15', budget:14200000, spend:11800000, progress:78, status:'At Risk'},
+    {id:uid(), name:'Sahyadri Warehouse Unit 4', client:'Sahyadri Warehousing LLP', start:'2026-05-01', target:'2027-01-20', budget:6200000, spend:1650000, progress:22, status:'On Track'},
+  ],
+  sites: [
+    {id:uid(), name:'Devkar Heights Site', project:'Devkar Heights — Phase 2', location:'Gangapur Road, Nashik', supervisor:'Ravindra Pawar', status:'Active', workers:34, equipment:5},
+    {id:uid(), name:'NMC Block C Site', project:'NMC Affordable Housing Block C', location:'Panchavati, Nashik', supervisor:'Sunita Bhosale', status:'Active', workers:52, equipment:8},
+    {id:uid(), name:'Sahyadri Unit 4 Site', project:'Sahyadri Warehouse Unit 4', location:'Sinnar MIDC, Nashik', supervisor:'Ganesh More', status:'Active', workers:18, equipment:4},
+  ],
+  materials: [
+    {id:uid(), item:'OPC 53 Cement', site:'Devkar Heights Site', unit:'Bags', qty:340, threshold:400, rate:410},
+    {id:uid(), item:'TMT Steel Bars 12mm', site:'Devkar Heights Site', unit:'Tonnes', qty:12, threshold:8, rate:64500},
+    {id:uid(), item:'River Sand', site:'NMC Block C Site', unit:'Brass', qty:22, threshold:30, rate:5200},
+    {id:uid(), item:'Aggregate 20mm', site:'NMC Block C Site', unit:'Brass', qty:48, threshold:25, rate:3600},
+    {id:uid(), item:'Red Bricks', site:'Sahyadri Unit 4 Site', unit:'Nos (000s)', qty:14, threshold:20, rate:6800},
+    {id:uid(), item:'Waterproof Admixture', site:'Sahyadri Unit 4 Site', unit:'Litres', qty:180, threshold:60, rate:145},
+  ],
+  labour: [
+    {id:uid(), name:'Vishnu Kale', role:'Mason', site:'Devkar Heights Site', rate:750, attendance:26, days:28},
+    {id:uid(), name:'Anita Shelke', role:'Bar Bender', site:'Devkar Heights Site', rate:700, attendance:27, days:28},
+    {id:uid(), name:'Farooq Shaikh', role:'Electrician', site:'NMC Block C Site', rate:800, attendance:20, days:28},
+    {id:uid(), name:'Rekha Gaikwad', role:'Helper', site:'NMC Block C Site', rate:520, attendance:25, days:28},
+    {id:uid(), name:'Dattu Jadhav', role:'Plumber', site:'Sahyadri Unit 4 Site', rate:720, attendance:18, days:28},
+  ],
+  equipment: [
+    {id:uid(), name:'Tower Crane TC-01', type:'Crane', site:'Devkar Heights Site', status:'In Use'},
+    {id:uid(), name:'Concrete Mixer CM-04', type:'Mixer', site:'NMC Block C Site', status:'In Use'},
+    {id:uid(), name:'JCB Excavator EX-02', type:'Excavator', site:'Sahyadri Unit 4 Site', status:'Idle'},
+    {id:uid(), name:'Vibrator Compactor VC-07', type:'Compactor', site:'NMC Block C Site', status:'Maintenance'},
+  ],
+  invoices: [
+    {id:uid(), num:'INV-2026-041', project:'Devkar Heights — Phase 2', client:'Devkar Realty Pvt. Ltd.', amount:850000, status:'Paid', date:'2026-07-05'},
+    {id:uid(), num:'INV-2026-042', project:'NMC Affordable Housing Block C', client:'Nashik Municipal Corp — Housing Wing', amount:1200000, status:'Overdue', date:'2026-06-28'},
+    {id:uid(), num:'INV-2026-043', project:'Sahyadri Warehouse Unit 4', client:'Sahyadri Warehousing LLP', amount:410000, status:'Pending', date:'2026-07-22'},
+  ],
+  payments: [
+    {id:uid(), ref:'PAY-9001', to:'Kadam Structural Works', type:'Contractor', amount:220000, method:'Bank Transfer', date:'2026-07-18', status:'Completed'},
+    {id:uid(), ref:'PAY-9002', to:'Devkar Realty Pvt. Ltd.', type:'Client Receipt', amount:850000, method:'RTGS', date:'2026-07-05', status:'Completed'},
+    {id:uid(), ref:'PAY-9003', to:'Bright Line Electricals', type:'Contractor', amount:60000, method:'UPI', date:'2026-07-24', status:'Pending'},
+  ],
+  progress: [
+    {id:uid(), site:'Devkar Heights Site', date:'2026-07-26', activity:'Slab shuttering — 4th floor, column casting completed', issues:'None reported', by:'Ravindra Pawar'},
+    {id:uid(), site:'NMC Block C Site', date:'2026-07-26', activity:'Brickwork 2nd floor, electrical conduiting in progress', issues:'Loose scaffold plank near east wing — flagged for repair', by:'Sunita Bhosale'},
+    {id:uid(), site:'Sahyadri Unit 4 Site', date:'2026-07-25', activity:'Foundation excavation 60% complete', issues:'Minor water seepage in trench, pump deployed', by:'Ganesh More'},
+    {id:uid(), site:'NMC Block C Site', date:'2026-07-19', activity:'Plastering internal walls, ground floor', issues:'Worker reported near-miss with unguarded rebar edge', by:'Sunita Bhosale'},
+  ],
+};
+
+const els = {content: document.getElementById('content'), toast: document.getElementById('toast')};
+let currentView = 'dashboard';
+
+function toast(msg){
+  els.toast.textContent = msg;
+  els.toast.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(()=>els.toast.classList.remove('show'), 2200);
+}
+
+/* =======================================================
+   AI LAYER — lightweight heuristic "predictions"
+======================================================= */
+const AI = {
+  completion(p){
+    const elapsed = daysBetween(p.start, todayISO());
+    const totalPlanned = daysBetween(p.start, p.target);
+    const rate = p.progress / Math.max(elapsed,1); // % per day
+    const daysNeeded = rate > 0 ? Math.round((100 - p.progress) / rate) : 999;
+    const projected = new Date(Date.now() + daysNeeded*86400000);
+    const delayDays = daysBetween(p.target, projected.toISOString().slice(0,10));
+    return {projected, delayDays, totalPlanned, elapsed};
+  },
+  costOverrun(p){
+    const spendRatio = p.spend / p.budget;
+    const progressRatio = p.progress / 100;
+    const drift = progressRatio > 0 ? (spendRatio - progressRatio) / progressRatio : 0;
+    const projectedFinalCost = p.budget * (1 + Math.max(drift,0));
+    return {spendRatio, progressRatio, drift, projectedFinalCost};
+  },
+  riskLevel(p){
+    const c = AI.completion(p);
+    const co = AI.costOverrun(p);
+    if(c.delayDays > 20 || co.drift > 0.18) return 'high';
+    if(c.delayDays > 5 || co.drift > 0.07) return 'med';
+    return 'low';
+  },
+  materialAlerts(){
+    return state.materials.filter(m => m.qty <= m.threshold);
+  },
+  labourForecast(site){
+    const l = state.labour.filter(x=>x.site===site);
+    const avgAtt = l.length ? l.reduce((s,x)=>s+x.attendance/x.days,0)/l.length : 0;
+    const shortfall = avgAtt < 0.85;
+    return {count: l.length, avgAtt, shortfall};
+  },
+  safetyRisk(site){
+    const logs = state.progress.filter(x=>x.site===site);
+    const keywords = ['unsafe','hazard','accident','fall','unguarded','loose','seepage','near-miss','injur'];
+    const flagged = logs.filter(l => keywords.some(k => l.issues.toLowerCase().includes(k)));
+    return {flagged, level: flagged.length >= 2 ? 'high' : flagged.length === 1 ? 'med' : 'low'};
+  },
+  generateReport(site){
+    const logs = state.progress.filter(x=>x.site===site).sort((a,b)=>new Date(b.date)-new Date(a.date));
+    if(!logs.length) return 'No progress data available for this site yet.';
+    const latest = logs[0];
+    const safety = AI.safetyRisk(site);
+    let out = `As of ${fmtDate(latest.date)}, ${site} reports: ${latest.activity}. `;
+    out += safety.flagged.length ? `Safety attention required — ${safety.flagged.length} recent entr${safety.flagged.length>1?'ies':'y'} flagged site conditions for review. ` : `No active safety flags in recent logs. `;
+    out += logs.length > 1 ? `Compared to the prior entry on ${fmtDate(logs[1].date)}, work has progressed as planned.` : `This is the first logged entry for the site.`;
+    return out;
+  }
+};
+
+/* =======================================================
+   NAV
+======================================================= */
+document.querySelectorAll('.nav-item').forEach(btn=>{
+  btn.addEventListener('click', ()=> showView(btn.dataset.view));
+});
+document.getElementById('btn-refresh-ai').addEventListener('click', ()=>{
+  toast('AI predictions recalculated');
+  render();
+});
+document.getElementById('btn-quick-add').addEventListener('click', ()=>{
+  const map = {clients:openClientForm, projects:openProjectForm, sites:openSiteForm, materials:openMaterialForm,
+    labour:openLabourForm, contractors:openContractorForm, equipment:openEquipmentForm, billing:openInvoiceForm,
+    payments:openPaymentForm, progress:openProgressForm};
+  (map[currentView] || openProjectForm)();
+});
+
+function showView(view){
+  currentView = view;
+  document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
+  const titles = {
+    dashboard:['Dashboard','Portfolio Overview'], clients:['Client Management','Relationships · Contacts · Contracts'],
+    contractors:['Contractor Management','Work Packages · Payment Status'], projects:['Project Management','Timelines · Budgets · Milestones'],
+    sites:['Site Management','Locations · Teams · Live Status'], progress:['Daily Progress','Site Logs · Photos · AI Reports'],
+    materials:['Material Stock','Inventory · Reorder Alerts'], labour:['Labour Management','Attendance · Deployment'],
+    equipment:['Equipment Tracking','Assignment · Utilization'], billing:['Billing','Invoices · Line Items'],
+    payments:['Payments','Receipts · Disbursements'],
+  };
+  document.getElementById('topbar-title').textContent = titles[view][0];
+  document.getElementById('topbar-crumb').textContent = titles[view][1];
+  render();
+}
+
+function updateCounts(){
+  const map = {clients:'clients',contractors:'contractors',projects:'projects',sites:'sites',progress:'progress',
+    materials:'materials',labour:'labour',equipment:'equipment',billing:'invoices',payments:'payments'};
+  Object.entries(map).forEach(([nav,key])=>{
+    const el = document.getElementById('nc-'+nav);
+    if(el) el.textContent = state[key].length;
+  });
+}
+
+/* =======================================================
+   RENDER ROUTER
+======================================================= */
+function render(){
+  updateCounts();
+  const fn = {dashboard:renderDashboard, clients:renderClients, contractors:renderContractors, projects:renderProjects,
+    sites:renderSites, progress:renderProgress, materials:renderMaterials, labour:renderLabour,
+    equipment:renderEquipment, billing:renderBilling, payments:renderPayments}[currentView];
+  els.content.innerHTML = '';
+  fn();
+}
+
+function sheet(labelText, titleText, subText){
+  const s = document.createElement('div');
+  s.className = 'sheet';
+  s.innerHTML = `<div class="cmk1"></div><div class="cmk2"></div>
+    <div class="sheet-label">${labelText}</div>
+    <div class="sheet-title"><span>${titleText}</span>${subText?`<span class="sub">${subText}</span>`:''}</div>`;
+  return s;
+}
+
+/* =======================================================
+   DASHBOARD
+======================================================= */
+function renderDashboard(){
+  const totalBudget = state.projects.reduce((s,p)=>s+p.budget,0);
+  const totalSpend = state.projects.reduce((s,p)=>s+p.spend,0);
+  const activeSites = state.sites.filter(s=>s.status==='Active').length;
+  const dueInvoices = state.invoices.filter(i=>i.status!=='Paid').reduce((s,i)=>s+i.amount,0);
+
+  const kpiWrap = document.createElement('div');
+  kpiWrap.className = 'grid grid-4';
+  kpiWrap.innerHTML = `
+    <div class="kpi"><div class="kpi-label">Active Projects</div><div class="kpi-value">${state.projects.length}</div><div class="kpi-delta">${activeSites} sites live</div></div>
+    <div class="kpi"><div class="kpi-label">Portfolio Budget</div><div class="kpi-value">${fmtMoney(totalBudget)}</div><div class="kpi-delta">${fmtMoney(totalSpend)} spent</div></div>
+    <div class="kpi"><div class="kpi-label">Spend Utilisation</div><div class="kpi-value">${Math.round(totalSpend/totalBudget*100)}%</div><div class="kpi-delta ${totalSpend/totalBudget>0.75?'down':'up'}">of total budget</div></div>
+    <div class="kpi"><div class="kpi-label">Outstanding Receivables</div><div class="kpi-value">${fmtMoney(dueInvoices)}</div><div class="kpi-delta down">${state.invoices.filter(i=>i.status==='Overdue').length} overdue invoice(s)</div></div>
+  `;
+  els.content.appendChild(kpiWrap);
+
+  const aiSheet = sheet('AI Intelligence Layer', 'Predictive Signals', 'Recalculated from live project & site data');
+  const aiGrid = document.createElement('div');
+  aiGrid.className = 'grid grid-3 section-gap';
+
+  state.projects.forEach(p=>{
+    const c = AI.completion(p);
+    const co = AI.costOverrun(p);
+    const risk = AI.riskLevel(p);
+    const card = document.createElement('div');
+    card.className = `ai-card risk-${risk}`;
+    card.innerHTML = `
+      <div class="ai-card-head"><span class="ai-tag">Completion + Cost</span></div>
+      <div class="ai-card-title">${p.name}</div>
+      <div class="ai-card-body" style="margin-top:6px;">
+        Projected finish: <b>${fmtDate(c.projected)}</b> (${c.delayDays > 0 ? c.delayDays+' days late' : 'on schedule'})<br>
+        Projected final cost: <b>${fmtMoney(Math.round(co.projectedFinalCost))}</b> vs budget ${fmtMoney(p.budget)}<br>
+        Risk level: <b style="text-transform:capitalize">${risk}</b>
+      </div>`;
+    aiGrid.appendChild(card);
+  });
+  aiSheet.appendChild(aiGrid);
+
+  const aiGrid2 = document.createElement('div');
+  aiGrid2.className = 'grid grid-3 section-gap';
+  const matAlerts = AI.materialAlerts();
+  aiGrid2.innerHTML += `
+    <div class="ai-card ${matAlerts.length?'risk-med':'risk-low'}">
+      <div class="ai-card-head"><span class="ai-tag">Material Forecast</span></div>
+      <div class="ai-card-title">Reorder Alerts</div>
+      <div class="ai-card-body" style="margin-top:6px;">
+        ${matAlerts.length ? matAlerts.map(m=>`<b>${m.item}</b> at ${m.site} — ${m.qty} ${m.unit} (below ${m.threshold})`).join('<br>') : 'All stock levels within safe threshold.'}
+      </div>
+    </div>`;
+
+  state.sites.slice(0,2).forEach(s=>{
+    const lf = AI.labourForecast(s.name);
+    const sr = AI.safetyRisk(s.name);
+    aiGrid2.innerHTML += `
+      <div class="ai-card risk-${sr.level}">
+        <div class="ai-card-head"><span class="ai-tag">Labour + Safety</span></div>
+        <div class="ai-card-title">${s.name}</div>
+        <div class="ai-card-body" style="margin-top:6px;">
+          Avg. attendance: <b>${Math.round(lf.avgAtt*100)}%</b> ${lf.shortfall ? '— below optimal, workforce top-up recommended' : '— adequate deployment'}<br>
+          Safety flags (recent logs): <b>${sr.flagged.length}</b> ${sr.level==='high' ? '— escalate to site supervisor' : sr.level==='med' ? '— monitor closely' : '— no action needed'}
+        </div>
+      </div>`;
+  });
+  aiSheet.appendChild(aiGrid2);
+  els.content.appendChild(aiSheet);
+
+  const projSheet = sheet('Execution', 'Project Status', `${state.projects.length} active`);
+  const tbl = document.createElement('table');
+  tbl.innerHTML = `<thead><tr><th>Project</th><th>Client</th><th>Progress</th><th>Budget vs Spend</th><th>Status</th></tr></thead>
+    <tbody>${state.projects.map(p=>`
+      <tr>
+        <td>${p.name}</td>
+        <td class="muted">${p.client}</td>
+        <td style="min-width:140px;">
+          <div class="progress-track"><div class="progress-fill ${p.progress<40?'':(p.progress<75?'':'green')}" style="width:${p.progress}%"></div></div>
+          <span class="cell-mono" style="font-size:10.5px;">${p.progress}%</span>
+        </td>
+        <td class="cell-mono">${fmtMoney(p.spend)} / ${fmtMoney(p.budget)}</td>
+        <td><span class="badge ${p.status==='On Track'?'badge-green':'badge-amber'}">${p.status}</span></td>
+      </tr>`).join('')}</tbody>`;
+  projSheet.appendChild(tbl);
+  els.content.appendChild(projSheet);
+}
+
+/* =======================================================
+   CLIENTS
+======================================================= */
+function renderClients(){
+  const s = sheet('Relationships', 'Client Records', `${state.clients.length} clients`);
+  const tbl = document.createElement('table');
+  tbl.innerHTML = `<thead><tr><th>Client</th><th>Primary Contact</th><th>Phone</th><th>Linked Projects</th><th>Last Contact</th><th></th></tr></thead>
+    <tbody>${state.clients.map(c=>`
+      <tr>
+        <td><b>${c.name}</b><div class="muted" style="font-size:11px;">${c.address}</div></td>
+        <td>${c.contact}<div class="muted" style="font-size:11px;">${c.email}</div></td>
+        <td class="cell-mono">${c.phone}</td>
+        <td><span class="badge badge-blue">${c.projects} project(s)</span></td>
+        <td class="cell-mono">${fmtDate(c.lastContact)}</td>
+        <td><button class="btn btn-sm btn-ghost-danger" onclick="removeItem('clients','${c.id}')">Archive</button></td>
+      </tr>`).join('')}</tbody>`;
+  s.appendChild(tbl);
+  if(!state.clients.length) s.appendChild(emptyEl('No clients yet — add your first client record.'));
+  els.content.appendChild(s);
+}
+function openClientForm(){
+  openModal('New Client', [
+    {k:'name', label:'Client / Company Name', type:'text', req:true},
+    {k:'contact', label:'Primary Contact', type:'text', req:true},
+    {k:'phone', label:'Phone', type:'text'},
+    {k:'email', label:'Email', type:'text'},
+    {k:'address', label:'Address', type:'text'},
+  ], data=>{
+    state.clients.unshift({id:uid(), name:data.name, contact:data.contact, phone:data.phone||'—', email:data.email||'—', address:data.address||'—', projects:0, lastContact:todayISO()});
+    toast('Client added'); showView('clients');
+  });
+}
+
+/* =======================================================
+   CONTRACTORS
+======================================================= */
+function renderContractors(){
+  const s = sheet('Relationships', 'Contractors & Work Packages', `${state.contractors.length} on record`);
+  const tbl = document.createElement('table');
+  tbl.innerHTML = `<thead><tr><th>Contractor</th><th>Trade</th><th>Phone</th><th>Paid</th><th>Due</th><th>Status</th></tr></thead>
+    <tbody>${state.contractors.map(c=>`
+      <tr>
+        <td><b>${c.name}</b></td>
+        <td>${c.trade}</td>
+        <td class="cell-mono">${c.phone}</td>
+        <td class="cell-mono">${fmtMoney(c.paid)}</td>
+        <td class="cell-mono" style="color:${c.due>0?'#a83329':'inherit'}">${fmtMoney(c.due)}</td>
+        <td><span class="badge ${c.status==='Active'?'badge-green':'badge-gray'}">${c.status}</span></td>
+      </tr>`).join('')}</tbody>`;
+  s.appendChild(tbl);
+  els.content.appendChild(s);
+}
+function openContractorForm(){
+  openModal('New Contractor', [
+    {k:'name', label:'Contractor / Firm Name', type:'text', req:true},
+    {k:'trade', label:'Trade / Work Package', type:'text', req:true},
+    {k:'phone', label:'Phone', type:'text'},
+  ], data=>{
+    state.contractors.unshift({id:uid(), name:data.name, trade:data.trade, phone:data.phone||'—', status:'Active', paid:0, due:0});
+    toast('Contractor added'); showView('contractors');
+  });
+}
+
+/* =======================================================
+   PROJECTS
+======================================================= */
+function renderProjects(){
+  const s = sheet('Execution', 'Projects', `${state.projects.length} active`);
+  const tbl = document.createElement('table');
+  tbl.innerHTML = `<thead><tr><th>Project</th><th>Client</th><th>Start → Target</th><th>Progress</th><th>Budget</th><th>Spend</th><th>Status</th><th></th></tr></thead>
+    <tbody>${state.projects.map(p=>`
+      <tr>
+        <td><b>${p.name}</b></td>
+        <td class="muted">${p.client}</td>
+        <td class="cell-mono" style="font-size:11px;">${fmtDate(p.start)} → ${fmtDate(p.target)}</td>
+        <td style="min-width:120px;"><div class="progress-track"><div class="progress-fill" style="width:${p.progress}%"></div></div><span class="cell-mono" style="font-size:10.5px;">${p.progress}%</span></td>
+        <td class="cell-mono">${fmtMoney(p.budget)}</td>
+        <td class="cell-mono">${fmtMoney(p.spend)}</td>
+        <td><span class="badge ${p.status==='On Track'?'badge-green':'badge-amber'}">${p.status}</span></td>
+        <td><button class="btn btn-sm btn-ghost-danger" onclick="removeItem('projects','${p.id}')">Delete</button></td>
+      </tr>`).join('')}</tbody>`;
+  s.appendChild(tbl);
+  els.content.appendChild(s);
+}
+function openProjectForm(){
+  openModal('New Project', [
+    {k:'name', label:'Project Name', type:'text', req:true},
+    {k:'client', label:'Client', type:'select', options:state.clients.map(c=>c.name), req:true},
+    {k:'start', label:'Start Date', type:'date', req:true},
+    {k:'target', label:'Target End Date', type:'date', req:true},
+    {k:'budget', label:'Budget (₹)', type:'number', req:true},
+  ], data=>{
+    state.projects.unshift({id:uid(), name:data.name, client:data.client, start:data.start, target:data.target,
+      budget:Number(data.budget), spend:0, progress:0, status:'On Track'});
+    toast('Project created'); showView('projects');
+  });
+}
+
+/* =======================================================
+   SITES
+======================================================= */
+function renderSites(){
+  const s = sheet('Execution', 'Sites', `${state.sites.length} sites`);
+  const grid = document.createElement('div');
+  grid.className = 'grid grid-3';
+  state.sites.forEach(site=>{
+    const div = document.createElement('div');
+    div.className = 'kpi';
+    div.innerHTML = `
+      <div class="flex-between"><div class="kpi-label">${site.status}</div><span class="badge badge-green" style="font-size:9px;">● live</span></div>
+      <div style="font-family:'Space Grotesk'; font-weight:700; font-size:15px; margin-top:8px; color:#fff;">${site.name}</div>
+      <div class="muted" style="font-size:11.5px; margin-top:4px;">${site.location}</div>
+      <div class="muted" style="font-size:11.5px; margin-top:2px;">Project: ${site.project}</div>
+      <div style="display:flex; gap:16px; margin-top:12px; font-family:'IBM Plex Mono'; font-size:11px;">
+        <div>👷 ${site.workers} workers</div>
+        <div>🚜 ${site.equipment} units</div>
+      </div>
+      <div class="mini-note">Supervisor: ${site.supervisor}</div>
+    `;
+    grid.appendChild(div);
+  });
+  s.appendChild(grid);
+  els.content.appendChild(s);
+}
+function openSiteForm(){
+  openModal('New Site', [
+    {k:'name', label:'Site Name', type:'text', req:true},
+    {k:'project', label:'Project', type:'select', options:state.projects.map(p=>p.name), req:true},
+    {k:'location', label:'Location', type:'text', req:true},
+    {k:'supervisor', label:'Site Supervisor', type:'text', req:true},
+  ], data=>{
+    state.sites.unshift({id:uid(), name:data.name, project:data.project, location:data.location, supervisor:data.supervisor, status:'Active', workers:0, equipment:0});
+    toast('Site added'); showView('sites');
+  });
+}
+
+/* =======================================================
+   DAILY PROGRESS
+======================================================= */
+function renderProgress(){
+  const s = sheet('Site Operations', 'Daily Progress Logs', `${state.progress.length} entries`);
+  const list = document.createElement('div');
+  state.progress.slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).forEach(log=>{
+    const row = document.createElement('div');
+    row.style.cssText = 'padding:12px 0; border-bottom:1px solid var(--paper-dim);';
+    const flagged = ['unsafe','hazard','accident','fall','unguarded','loose','seepage','near-miss','injur'].some(k=>log.issues.toLowerCase().includes(k));
+    row.innerHTML = `
+      <div class="flex-between">
+        <div><b>${log.site}</b> <span class="muted cell-mono" style="font-size:11px;">· ${fmtDate(log.date)} · logged by ${log.by}</span></div>
+        ${flagged?'<span class="badge badge-red">Safety Flag</span>':'<span class="badge badge-green">Normal</span>'}
+      </div>
+      <div style="margin-top:6px; font-size:13px;">${log.activity}</div>
+      <div class="muted" style="margin-top:3px; font-size:12px;">Issues: ${log.issues}</div>
+    `;
+    list.appendChild(row);
+  });
+  s.appendChild(list);
+  els.content.appendChild(s);
+
+  const repSheet = sheet('AI Generative', 'AI Progress Report Generator', 'Auto-summarised from latest site logs');
+  const repGrid = document.createElement('div');
+  repGrid.className = 'grid grid-3';
+  state.sites.forEach(site=>{
+    const div = document.createElement('div');
+    div.className = 'ai-card risk-low';
+    div.innerHTML = `<div class="ai-card-head"><span class="ai-tag">Report</span></div>
+      <div class="ai-card-title">${site.name}</div>
+      <div class="ai-card-body" style="margin-top:6px;">${AI.generateReport(site.name)}</div>`;
+    repGrid.appendChild(div);
+  });
+  repSheet.appendChild(repGrid);
+  els.content.appendChild(repSheet);
+}
+function openProgressForm(){
+  openModal('New Progress Log', [
+    {k:'site', label:'Site', type:'select', options:state.sites.map(s=>s.name), req:true},
+    {k:'date', label:'Date', type:'date', req:true},
+    {k:'activity', label:'Activity Summary', type:'textarea', req:true},
+    {k:'issues', label:'Issues / Site Conditions', type:'textarea'},
+    {k:'by', label:'Logged By', type:'text', req:true},
+  ], data=>{
+    state.progress.unshift({id:uid(), site:data.site, date:data.date, activity:data.activity, issues:data.issues||'None reported', by:data.by});
+    toast('Progress log submitted'); showView('progress');
+  });
+}
+
+/* =======================================================
+   MATERIALS
+======================================================= */
+function renderMaterials(){
+  const s = sheet('Resources', 'Material Stock', `${state.materials.length} items tracked`);
+  const tbl = document.createElement('table');
+  tbl.innerHTML = `<thead><tr><th>Item</th><th>Site</th><th>Quantity</th><th>Threshold</th><th>Rate</th><th>Status</th></tr></thead>
+    <tbody>${state.materials.map(m=>{
+      const low = m.qty <= m.threshold;
+      return `<tr>
+        <td><b>${m.item}</b></td>
+        <td class="muted">${m.site}</td>
+        <td class="cell-mono">${m.qty} ${m.unit}</td>
+        <td class="cell-mono muted">${m.threshold} ${m.unit}</td>
+        <td class="cell-mono">${fmtMoney(m.rate)}</td>
+        <td>${low?'<span class="badge badge-red">Reorder</span>':'<span class="badge badge-green">Adequate</span>'}</td>
+      </tr>`;
+    }).join('')}</tbody>`;
+  s.appendChild(tbl);
+  els.content.appendChild(s);
+}
+function openMaterialForm(){
+  openModal('New Material Item', [
+    {k:'item', label:'Material', type:'text', req:true},
+    {k:'site', label:'Site', type:'select', options:state.sites.map(s=>s.name), req:true},
+    {k:'unit', label:'Unit', type:'text', req:true},
+    {k:'qty', label:'Current Quantity', type:'number', req:true},
+    {k:'threshold', label:'Reorder Threshold', type:'number', req:true},
+    {k:'rate', label:'Rate per Unit (₹)', type:'number', req:true},
+  ], data=>{
+    state.materials.unshift({id:uid(), item:data.item, site:data.site, unit:data.unit, qty:Number(data.qty), threshold:Number(data.threshold), rate:Number(data.rate)});
+    toast('Material item added'); showView('materials');
+  });
+}
+
+/* =======================================================
+   LABOUR
+======================================================= */
+function renderLabour(){
+  const s = sheet('Resources', 'Labour Records', `${state.labour.length} workers`);
+  const tbl = document.createElement('table');
+  tbl.innerHTML = `<thead><tr><th>Worker</th><th>Role</th><th>Site</th><th>Daily Rate</th><th>Attendance</th></tr></thead>
+    <tbody>${state.labour.map(l=>{
+      const pct = Math.round(l.attendance/l.days*100);
+      return `<tr>
+        <td><b>${l.name}</b></td>
+        <td>${l.role}</td>
+        <td class="muted">${l.site}</td>
+        <td class="cell-mono">${fmtMoney(l.rate)}/day</td>
+        <td style="min-width:130px;">
+          <div class="progress-track"><div class="progress-fill ${pct<80?'red':'green'}" style="width:${pct}%"></div></div>
+          <span class="cell-mono" style="font-size:10.5px;">${l.attendance}/${l.days} days (${pct}%)</span>
+        </td>
+      </tr>`;
+    }).join('')}</tbody>`;
+  s.appendChild(tbl);
+  els.content.appendChild(s);
+}
+function openLabourForm(){
+  openModal('New Labour Record', [
+    {k:'name', label:'Worker Name', type:'text', req:true},
+    {k:'role', label:'Role', type:'text', req:true},
+    {k:'site', label:'Site', type:'select', options:state.sites.map(s=>s.name), req:true},
+    {k:'rate', label:'Daily Rate (₹)', type:'number', req:true},
+  ], data=>{
+    state.labour.unshift({id:uid(), name:data.name, role:data.role, site:data.site, rate:Number(data.rate), attendance:0, days:28});
+    toast('Labour record added'); showView('labour');
+  });
+}
+
+/* =======================================================
+   EQUIPMENT
+======================================================= */
+function renderEquipment(){
+  const s = sheet('Resources', 'Equipment Tracking', `${state.equipment.length} units`);
+  const tbl = document.createElement('table');
+  tbl.innerHTML = `<thead><tr><th>Equipment</th><th>Type</th><th>Assigned Site</th><th>Status</th></tr></thead>
+    <tbody>${state.equipment.map(e=>`
+      <tr>
+        <td><b>${e.name}</b></td>
+        <td>${e.type}</td>
+        <td class="muted">${e.site}</td>
+        <td><span class="badge ${e.status==='In Use'?'badge-green':e.status==='Idle'?'badge-gray':'badge-amber'}">${e.status}</span></td>
+      </tr>`).join('')}</tbody>`;
+  s.appendChild(tbl);
+  els.content.appendChild(s);
+}
+function openEquipmentForm(){
+  openModal('New Equipment Item', [
+    {k:'name', label:'Equipment Name / ID', type:'text', req:true},
+    {k:'type', label:'Type', type:'text', req:true},
+    {k:'site', label:'Assigned Site', type:'select', options:state.sites.map(s=>s.name), req:true},
+  ], data=>{
+    state.equipment.unshift({id:uid(), name:data.name, type:data.type, site:data.site, status:'Idle'});
+    toast('Equipment added'); showView('equipment');
+  });
+}
+
+/* =======================================================
+   BILLING
+======================================================= */
+function renderBilling(){
+  const s = sheet('Finance', 'Invoices', `${state.invoices.length} invoices`);
+  const tbl = document.createElement('table');
+  tbl.innerHTML = `<thead><tr><th>Invoice #</th><th>Project</th><th>Client</th><th>Amount</th><th>Date</th><th>Status</th></tr></thead>
+    <tbody>${state.invoices.map(i=>`
+      <tr>
+        <td class="cell-mono">${i.num}</td>
+        <td>${i.project}</td>
+        <td class="muted">${i.client}</td>
+        <td class="cell-mono">${fmtMoney(i.amount)}</td>
+        <td class="cell-mono">${fmtDate(i.date)}</td>
+        <td><span class="badge ${i.status==='Paid'?'badge-green':i.status==='Overdue'?'badge-red':'badge-amber'}">${i.status}</span></td>
+      </tr>`).join('')}</tbody>`;
+  s.appendChild(tbl);
+  els.content.appendChild(s);
+}
+function openInvoiceForm(){
+  openModal('New Invoice', [
+    {k:'num', label:'Invoice Number', type:'text', req:true},
+    {k:'project', label:'Project', type:'select', options:state.projects.map(p=>p.name), req:true},
+    {k:'client', label:'Client', type:'select', options:state.clients.map(c=>c.name), req:true},
+    {k:'amount', label:'Amount (₹)', type:'number', req:true},
+    {k:'date', label:'Date', type:'date', req:true},
+  ], data=>{
+    state.invoices.unshift({id:uid(), num:data.num, project:data.project, client:data.client, amount:Number(data.amount), date:data.date, status:'Pending'});
+    toast('Invoice created'); showView('billing');
+  });
+}
+
+/* =======================================================
+   PAYMENTS
+======================================================= */
+function renderPayments(){
+  const s = sheet('Finance', 'Payment Records', `${state.payments.length} transactions`);
+  const tbl = document.createElement('table');
+  tbl.innerHTML = `<thead><tr><th>Reference</th><th>To / From</th><th>Type</th><th>Amount</th><th>Method</th><th>Date</th><th>Status</th></tr></thead>
+    <tbody>${state.payments.map(p=>`
+      <tr>
+        <td class="cell-mono">${p.ref}</td>
+        <td>${p.to}</td>
+        <td class="muted">${p.type}</td>
+        <td class="cell-mono">${fmtMoney(p.amount)}</td>
+        <td>${p.method}</td>
+        <td class="cell-mono">${fmtDate(p.date)}</td>
+        <td><span class="badge ${p.status==='Completed'?'badge-green':'badge-amber'}">${p.status}</span></td>
+      </tr>`).join('')}</tbody>`;
+  s.appendChild(tbl);
+  els.content.appendChild(s);
+}
+function openPaymentForm(){
+  openModal('New Payment', [
+    {k:'ref', label:'Reference No.', type:'text', req:true},
+    {k:'to', label:'Paid To / Received From', type:'text', req:true},
+    {k:'type', label:'Type', type:'select', options:['Contractor','Client Receipt','Supplier','Other'], req:true},
+    {k:'amount', label:'Amount (₹)', type:'number', req:true},
+    {k:'method', label:'Method', type:'select', options:['Bank Transfer','RTGS','UPI','Cheque','Cash']},
+    {k:'date', label:'Date', type:'date', req:true},
+  ], data=>{
+    state.payments.unshift({id:uid(), ref:data.ref, to:data.to, type:data.type, amount:Number(data.amount), method:data.method||'Bank Transfer', date:data.date, status:'Pending'});
+    toast('Payment recorded'); showView('payments');
+  });
+}
+
+/* =======================================================
+   SHARED: modal, empty state, delete
+======================================================= */
+function emptyEl(msg){ const d=document.createElement('div'); d.className='empty'; d.textContent=msg; return d; }
+
+function removeItem(key, id){
+  state[key] = state[key].filter(x=>x.id!==id);
+  toast('Removed');
+  render();
+}
+
+function openModal(title, fields, onSubmit){
+  const backdrop = document.getElementById('modal-backdrop');
+  const modal = document.getElementById('modal');
+  modal.innerHTML = `
+    <button class="modal-close" id="modal-close">✕</button>
+    <div class="sheet-title">${title}</div>
+    <form id="modal-form">
+      ${fields.map(f=>`
+        <div class="field">
+          <label>${f.label}${f.req?' *':''}</label>
+          ${f.type==='select' ? `<select name="${f.k}" ${f.req?'required':''}>
+              <option value="">Select…</option>
+              ${(f.options||[]).map(o=>`<option value="${o}">${o}</option>`).join('')}
+            </select>`
+          : f.type==='textarea' ? `<textarea name="${f.k}" ${f.req?'required':''}></textarea>`
+          : `<input type="${f.type}" name="${f.k}" ${f.req?'required':''}>`}
+        </div>`).join('')}
+      <div class="modal-actions">
+        <button type="button" class="btn" id="modal-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  `;
+  backdrop.classList.add('open');
+  const close = ()=> backdrop.classList.remove('open');
+  document.getElementById('modal-close').onclick = close;
+  document.getElementById('modal-cancel').onclick = close;
+  backdrop.onclick = e => { if(e.target===backdrop) close(); };
+  document.getElementById('modal-form').onsubmit = e=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const data = {};
+    fields.forEach(f=> data[f.k] = fd.get(f.k));
+    onSubmit(data);
+    close();
+  };
+}
+
+/* init */
+showView('dashboard');
+</script>
+</body>
+</html>
