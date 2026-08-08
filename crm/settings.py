@@ -44,6 +44,10 @@ INSTALLED_APPS = [
     'sites',
     'projects',
     'tasks',
+    'dpr',
+    'materials',
+    'labour',
+    'contractors',
 ]
 
 MIDDLEWARE = [
