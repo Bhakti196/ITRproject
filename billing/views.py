@@ -1,17 +1,17 @@
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
 
-from .models import Contractor
-from .serializers import ContractorSerializer
+from .models import Billing
+from .serializers import BillingSerializer
 
 
-class ContractorListCreateView(generics.ListCreateAPIView):
+class BillingListCreateView(generics.ListCreateAPIView):
 
-    serializer_class = ContractorSerializer
+    serializer_class = BillingSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Contractor.objects.filter(
+        return Billing.objects.filter(
             created_by=self.request.user
         )
 

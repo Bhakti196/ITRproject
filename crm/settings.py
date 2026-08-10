@@ -48,6 +48,9 @@ INSTALLED_APPS = [
     'materials',
     'labour',
     'contractors',
+    'equipment',
+    "billing",
+    "payments",
 ]
 
 MIDDLEWARE = [
