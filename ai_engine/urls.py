@@ -1,9 +1,11 @@
+
 from django.urls import path
 
 from .views import (
     ProjectRiskView,
     ProjectCostRiskView,
     MaterialStockView,
+    LabourRequirementView,
 )
 
 
@@ -19,5 +21,9 @@ urlpatterns = [
     path(
         "material-stock/<int:project_id>/",
         MaterialStockView.as_view(),
+    ),
+    path(
+        "labour-requirement/<int:project_id>/",
+        LabourRequirementView.as_view(),
     ),
 ]

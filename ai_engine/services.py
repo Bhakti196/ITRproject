@@ -144,3 +144,64 @@ def material_stock_analysis(project_id):
         "project_id": project_id,
         "materials": results,
     }
+
+from django.db.models import Count, Avg
+from labour.models import Labour
+from projects.models import Project
+
+
+def labour_requirement_prediction(project_id):
+    project = Project.objects.get(id=project_id)
+
+    labour_records = Labour.objects.filter(
+        task__project_id=project_id
+    )
+
+    role_data = (
+        labour_records
+        .values("role")
+        .annotate(
+            workers=Count("id", distinct=True),
+            avg_hours=Avg("hours_worked"),
+        )
+    )
+
+    results = []
+
+    for role in role_data:
+        role_name = role["role"]
+        current_workers = role["workers"]
+        avg_hours = round(float(role["avg_hours"] or 0), 2)
+
+        # Heuristic:
+        # Each active task assigned to a role represents
+        # one expected worker requirement.
+        active_tasks = labour_records.filter(
+            role=role_name,
+            task__status__in=["PENDING", "IN_PROGRESS"]
+        ).values("task_id").distinct().count()
+
+        required_workers = max(active_tasks, 1)
+        difference = current_workers - required_workers
+
+        if difference < 0:
+            status = "SHORTFALL"
+        elif difference > 0:
+            status = "SURPLUS"
+        else:
+            status = "ADEQUATE"
+
+        results.append({
+            "role": role_name,
+            "current_workers": current_workers,
+            "estimated_required_workers": required_workers,
+            "difference": difference,
+            "average_hours_worked": avg_hours,
+            "status": status,
+        })
+
+    return {
+        "project_id": project.id,
+        "project_name": project.project_name,
+        "labour_forecast": results,
+    }
