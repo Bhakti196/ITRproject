@@ -112,3 +112,35 @@ def project_cost_overrun_risk(project_id):
         "variance": round(variance, 2),
         "risk_level": risk_level,
     }
+
+
+from materials.models import Material
+
+
+def material_stock_analysis(project_id):
+    materials = Material.objects.filter(project_id=project_id)
+
+    results = []
+
+    for material in materials:
+        quantity = float(material.quantity)
+        minimum_stock = float(material.minimum_stock)
+
+        if quantity <= minimum_stock:
+            status = "LOW"
+        else:
+            status = "ADEQUATE"
+
+        results.append({
+            "material_id": material.id,
+            "material_name": material.material_name,
+            "quantity": quantity,
+            "unit": material.unit,
+            "minimum_stock": minimum_stock,
+            "status": status,
+        })
+
+    return {
+        "project_id": project_id,
+        "materials": results,
+    }
