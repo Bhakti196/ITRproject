@@ -54,3 +54,61 @@ def project_completion_risk(project_id):
         "risk_score": risk_score,
         "risk_level": risk_level,
     }
+
+
+from decimal import Decimal
+
+from contractors.models import Contractor
+from billing.models import Billing
+
+
+def project_cost_overrun_risk(project_id):
+    project = Project.objects.get(id=project_id)
+
+    contractors = Contractor.objects.filter(site=project.site)
+
+    contract_value = sum(
+        (contractor.contract_value for contractor in contractors),
+        Decimal("0")
+    )
+
+    total_billed = sum(
+        (billing.amount for billing in Billing.objects.filter(project=project)),
+        Decimal("0")
+    )
+
+    if contract_value > 0:
+        financial_progress = (
+            total_billed / contract_value
+        ) * 100
+    else:
+        financial_progress = Decimal("0")
+
+    reports = DailyProgressReport.objects.filter(
+        task__project=project
+    ).order_by("-report_date")
+
+    if reports.exists():
+        physical_progress = reports.first().progress_percentage
+    else:
+        physical_progress = 0
+
+    variance = float(financial_progress) - float(physical_progress)
+
+    if variance >= 20:
+        risk_level = "HIGH"
+    elif variance >= 10:
+        risk_level = "MEDIUM"
+    else:
+        risk_level = "LOW"
+
+    return {
+        "project_id": project.id,
+        "project_name": project.project_name,
+        "contract_value": float(contract_value),
+        "total_billed": float(total_billed),
+        "financial_progress": round(float(financial_progress), 2),
+        "physical_progress": physical_progress,
+        "variance": round(variance, 2),
+        "risk_level": risk_level,
+    }
