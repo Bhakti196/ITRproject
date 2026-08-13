@@ -51,6 +51,8 @@ INSTALLED_APPS = [
     'equipment',
     "billing",
     "payments",
+    'ai_engine',
+
 ]
 
 MIDDLEWARE = [
