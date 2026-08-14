@@ -6,6 +6,7 @@ from dpr.models import DailyProgressReport
 from django.utils import timezone
 
 
+
 def project_completion_risk(project_id):
     project = Project.objects.get(id=project_id)
 
@@ -271,4 +272,35 @@ def delay_prediction(project_id):
         "project_id": project.id,
         "project_name": project.project_name,
         "delay_risk": results,
+    }
+def material_requirement_forecast(project_id):
+    materials = Material.objects.filter(project_id=project_id)
+
+    results = []
+
+    for material in materials:
+        quantity = float(material.quantity)
+        minimum_stock = float(material.minimum_stock)
+
+        if quantity < minimum_stock:
+            shortage = minimum_stock - quantity
+            status = "SHORTAGE"
+        else:
+            shortage = 0
+            status = "ADEQUATE"
+
+        results.append({
+            "material_id": material.id,
+            "material_name": material.material_name,
+            "current_quantity": quantity,
+            "unit": material.unit,
+            "minimum_stock": minimum_stock,
+            "estimated_requirement": minimum_stock,
+            "shortage_quantity": shortage,
+            "status": status,
+        })
+
+    return {
+        "project_id": project_id,
+        "materials": results,
     }
