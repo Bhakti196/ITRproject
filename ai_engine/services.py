@@ -4,6 +4,7 @@ from projects.models import Project
 from tasks.models import Task
 from dpr.models import DailyProgressReport
 from django.utils import timezone
+from equipment.models import Equipment
 
 
 
@@ -403,4 +404,121 @@ def generate_progress_report(project_id):
         "average_progress": round(average_progress, 2),
         "overall_status": overall_status,
         "report": report_text,
+    }
+def safety_risk_detection(project_id):
+    project = Project.objects.get(id=project_id)
+
+    risks = []
+
+    # -------------------------------------------------
+    # 1. Labour fatigue risk
+    # -------------------------------------------------
+    labour_records = Labour.objects.filter(
+        task__project=project
+    )
+
+    for labour in labour_records:
+        hours = float(labour.hours_worked)
+
+        if hours >= 10:
+            risks.append({
+                "risk_type": "LABOUR_FATIGUE",
+                "severity": "HIGH",
+                "description": (
+                    f"{labour.worker_name} worked {hours} hours, "
+                    "which may indicate fatigue risk."
+                ),
+            })
+
+        elif hours >= 8:
+            risks.append({
+                "risk_type": "LABOUR_FATIGUE",
+                "severity": "MEDIUM",
+                "description": (
+                    f"{labour.worker_name} worked {hours} hours. "
+                    "Monitor worker fatigue."
+                ),
+            })
+
+    # -------------------------------------------------
+    # 2. Equipment risk
+    # -------------------------------------------------
+    equipment_records = Equipment.objects.filter(
+        site=project.site
+    )
+
+    for equipment in equipment_records:
+
+        if equipment.status.upper() not in [
+            "OPERATIONAL",
+            "ACTIVE",
+            "AVAILABLE",
+        ]:
+            risks.append({
+                "risk_type": "EQUIPMENT",
+                "severity": "HIGH",
+                "description": (
+                    f"{equipment.equipment_name} has status "
+                    f"{equipment.status}."
+                ),
+            })
+
+    # -------------------------------------------------
+    # 3. Weather risk from latest DPR
+    # -------------------------------------------------
+    latest_report = (
+        DailyProgressReport.objects
+        .filter(task__project=project)
+        .order_by("-report_date")
+        .first()
+    )
+
+    if latest_report:
+
+        weather = latest_report.weather.upper()
+
+        if weather in ["STORM", "HEAVY_RAIN", "CYCLONE"]:
+            risks.append({
+                "risk_type": "WEATHER",
+                "severity": "HIGH",
+                "description": (
+                    f"Unsafe weather condition reported: {weather}."
+                ),
+            })
+
+        elif weather in ["RAIN", "WINDY"]:
+            risks.append({
+                "risk_type": "WEATHER",
+                "severity": "MEDIUM",
+                "description": (
+                    f"Weather condition requires monitoring: {weather}."
+                ),
+            })
+
+    # -------------------------------------------------
+    # Overall risk
+    # -------------------------------------------------
+    high_risks = sum(
+        1 for risk in risks
+        if risk["severity"] == "HIGH"
+    )
+
+    medium_risks = sum(
+        1 for risk in risks
+        if risk["severity"] == "MEDIUM"
+    )
+
+    if high_risks > 0:
+        overall_risk = "HIGH"
+    elif medium_risks > 0:
+        overall_risk = "MEDIUM"
+    else:
+        overall_risk = "LOW"
+
+    return {
+        "project_id": project.id,
+        "project_name": project.project_name,
+        "overall_risk": overall_risk,
+        "risk_count": len(risks),
+        "risks": risks,
     }

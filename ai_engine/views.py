@@ -11,6 +11,7 @@ from .services import (
     material_requirement_forecast,
     dpr_progress_analysis,
     generate_progress_report,
+    safety_risk_detection,
 )
 
 class ProjectRiskView(APIView):
@@ -110,6 +111,18 @@ class ProgressReportView(APIView):
     def get(self, request, project_id):
         try:
             result = generate_progress_report(project_id)
+            return Response(result)
+
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+class SafetyRiskView(APIView):
+
+    def get(self, request, project_id):
+        try:
+            result = safety_risk_detection(project_id)
             return Response(result)
 
         except Exception as e:
