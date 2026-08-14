@@ -521,7 +521,49 @@ async function apiFetch(endpoint) {
 
   return await response.json();
 }
+async function createBackendProject(projectData) {
+  const response = await fetch(`${API_BASE}/projects/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify(projectData)
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`CREATE PROJECT ${response.status}: ${text}`);
+  }
+
+  return await response.json();
+}
+async function getBackendProjects() {
+  try {
+    const projects = await apiFetch('/projects/');
+    console.log('DJANGO PROJECTS:', projects);
+    return projects;
+  } catch (error) {
+    console.error('DJANGO PROJECTS ERROR:', error);
+    return [];
+  }
+}
 const todayISO = () => new Date().toISOString().slice(0,10);
+function normalizeBackendProject(bp) {
+  return {
+    id: bp.id,
+    name: bp.project_name,
+    target: bp.end_date,
+    start: bp.start_date,
+    status: bp.status,
+
+    // Temporary: existing AI calculations still need these.
+    // We will replace these with Django fields/API data next.
+    budget: 0,
+    spend: 0,
+    progress: 0
+  };
+}
 const daysBetween = (a,b) => Math.round((new Date(b) - new Date(a)) / 86400000);
 const fmtMoney = n => '₹' + Number(n).toLocaleString('en-IN');
 const fmtDate = d => new Date(d).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
@@ -713,11 +755,32 @@ function sheet(labelText, titleText, subText){
     <div class="sheet-title"><span>${titleText}</span>${subText?`<span class="sub">${subText}</span>`:''}</div>`;
   return s;
 }
+async function loadProjectRisk(projectId, card) {
+  try {
+    const result = await apiFetch(`/ai/project-risk/${projectId}/`);
+
+    const risk = (result.overall_risk || 'LOW').toLowerCase();
+
+    card.classList.remove('risk-low', 'risk-med', 'risk-high');
+
+    const riskClass = risk === 'medium' ? 'med' : risk;
+    card.classList.add(`risk-${riskClass}`);
+
+    const riskElement = card.querySelector('.backend-risk-level');
+
+    if (riskElement) {
+      riskElement.textContent = risk;
+    }
+  } catch (error) {
+    console.error(`Project risk API error for project ${projectId}:`, error);
+  }
+}
 
 /* =======================================================
    DASHBOARD
 ======================================================= */
-function renderDashboard(){
+async function renderDashboard(){
+  const backendProjects = await getBackendProjects();
   const totalBudget = state.projects.reduce((s,p)=>s+p.budget,0);
   const totalSpend = state.projects.reduce((s,p)=>s+p.spend,0);
   const activeSites = state.sites.filter(s=>s.status==='Active').length;
@@ -726,7 +789,10 @@ function renderDashboard(){
   const kpiWrap = document.createElement('div');
   kpiWrap.className = 'grid grid-4';
   kpiWrap.innerHTML = `
-    <div class="kpi"><div class="kpi-label">Active Projects</div><div class="kpi-value">${state.projects.length}</div><div class="kpi-delta">${activeSites} sites live</div></div>
+    <div class="kpi">
+    <div class="kpi-label">Active Projects</div>
+    <div class="kpi-value">${backendProjects.length}</div>
+    <div class="kpi-delta">${activeSites} sites live</div></div>
     <div class="kpi"><div class="kpi-label">Portfolio Budget</div><div class="kpi-value">${fmtMoney(totalBudget)}</div><div class="kpi-delta">${fmtMoney(totalSpend)} spent</div></div>
     <div class="kpi"><div class="kpi-label">Spend Utilisation</div><div class="kpi-value">${Math.round(totalSpend/totalBudget*100)}%</div><div class="kpi-delta ${totalSpend/totalBudget>0.75?'down':'up'}">of total budget</div></div>
     <div class="kpi"><div class="kpi-label">Outstanding Receivables</div><div class="kpi-value">${fmtMoney(dueInvoices)}</div><div class="kpi-delta down">${state.invoices.filter(i=>i.status==='Overdue').length} overdue invoice(s)</div></div>
@@ -737,24 +803,53 @@ function renderDashboard(){
   const aiGrid = document.createElement('div');
   aiGrid.className = 'grid grid-3 section-gap';
 
-  state.projects.forEach(p=>{
-    const c = AI.completion(p);
-    const co = AI.costOverrun(p);
-    const risk = AI.riskLevel(p);
-    const card = document.createElement('div');
-    card.className = `ai-card risk-${risk}`;
-    card.innerHTML = `
-      <div class="ai-card-head"><span class="ai-tag">Completion + Cost</span></div>
-      <div class="ai-card-title">${p.name}</div>
-      <div class="ai-card-body" style="margin-top:6px;">
-        Projected finish: <b>${fmtDate(c.projected)}</b> (${c.delayDays > 0 ? c.delayDays+' days late' : 'on schedule'})<br>
-        Projected final cost: <b>${fmtMoney(Math.round(co.projectedFinalCost))}</b> vs budget ${fmtMoney(p.budget)}<br>
-        Risk level: <b style="text-transform:capitalize">${risk}</b>
-      </div>`;
-    aiGrid.appendChild(card);
-  });
-  aiSheet.appendChild(aiGrid);
+  const dashboardProjects = backendProjects.map(normalizeBackendProject);
+  dashboardProjects.forEach(p => {
+  const c = AI.completion(p);
+  const co = AI.costOverrun(p);
+  const risk = AI.riskLevel(p);
 
+  const card = document.createElement('div');
+
+  card.className = 'ai-card';
+
+  card.innerHTML = `
+    <div class="ai-card-head">
+      <span class="ai-tag">PROJECT RISK</span>
+    </div>
+
+    <div class="ai-card-title">
+      ${p.name}
+    </div>
+
+    <div class="ai-card-body" style="margin-top:6px;">
+      Start date:
+      <b>${fmtDate(p.start)}</b>
+      <br>
+
+      Target date:
+      <b>${fmtDate(p.target)}</b>
+      <br>
+
+      Project status:
+      <b>${p.status}</b>
+      <br>
+
+      AI Risk:
+      <b class="backend-risk-level"
+         style="text-transform:capitalize">
+        Loading...
+      </b>
+    </div>
+  `;
+
+  aiGrid.appendChild(card);
+
+  // Use Django project's real database ID
+  loadProjectRisk(p.id, card);
+});
+aiSheet.appendChild(aiGrid);
+  
   const aiGrid2 = document.createElement('div');
   aiGrid2.className = 'grid grid-3 section-gap';
   const matAlerts = AI.materialAlerts();
@@ -783,22 +878,65 @@ function renderDashboard(){
   aiSheet.appendChild(aiGrid2);
   els.content.appendChild(aiSheet);
 
-  const projSheet = sheet('Execution', 'Project Status', `${state.projects.length} active`);
-  const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th>Project</th><th>Client</th><th>Progress</th><th>Budget vs Spend</th><th>Status</th></tr></thead>
-    <tbody>${state.projects.map(p=>`
-      <tr>
-        <td>${p.name}</td>
-        <td class="muted">${p.client}</td>
-        <td style="min-width:140px;">
-          <div class="progress-track"><div class="progress-fill ${p.progress<40?'':(p.progress<75?'':'green')}" style="width:${p.progress}%"></div></div>
-          <span class="cell-mono" style="font-size:10.5px;">${p.progress}%</span>
-        </td>
-        <td class="cell-mono">${fmtMoney(p.spend)} / ${fmtMoney(p.budget)}</td>
-        <td><span class="badge ${p.status==='On Track'?'badge-green':'badge-amber'}">${p.status}</span></td>
-      </tr>`).join('')}</tbody>`;
-  projSheet.appendChild(tbl);
-  els.content.appendChild(projSheet);
+   const projSheet = sheet(
+  'Execution',
+  'Project Status',
+  `${backendProjects.length} active`
+);
+
+const tbl = document.createElement('table');
+
+tbl.innerHTML = `
+  <thead>
+    <tr>
+      <th>Project</th>
+      <th>Start Date</th>
+      <th>Target Date</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+
+  <tbody>
+    ${
+      backendProjects.length
+        ? backendProjects.map(p => `
+            <tr>
+              <td>
+                ${p.project_name}
+              </td>
+
+              <td class="cell-mono">
+                ${fmtDate(p.start_date)}
+              </td>
+
+              <td class="cell-mono">
+                ${fmtDate(p.end_date)}
+              </td>
+
+              <td>
+                <span class="badge ${
+                  p.status === 'IN_PROGRESS'
+                    ? 'badge-green'
+                    : 'badge-amber'
+                }">
+                  ${p.status}
+                </span>
+              </td>
+            </tr>
+          `).join('')
+        : `
+          <tr>
+            <td colspan="4" class="muted">
+              No projects found in Django.
+            </td>
+          </tr>
+        `
+    }
+  </tbody>
+`;
+
+projSheet.appendChild(tbl);
+els.content.appendChild(projSheet);
 }
 
 /* =======================================================
@@ -867,35 +1005,105 @@ function openContractorForm(){
 /* =======================================================
    PROJECTS
 ======================================================= */
-function renderProjects(){
-  const s = sheet('Execution', 'Projects', `${state.projects.length} active`);
+async function renderProjects() {
+  const backendProjects = await getBackendProjects();
+
+  const s = sheet(
+    'Execution',
+    'Projects',
+    `${backendProjects.length} active`
+  );
+
   const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th>Project</th><th>Client</th><th>Start → Target</th><th>Progress</th><th>Budget</th><th>Spend</th><th>Status</th><th></th></tr></thead>
-    <tbody>${state.projects.map(p=>`
+
+  tbl.innerHTML = `
+    <thead>
       <tr>
-        <td><b>${p.name}</b></td>
-        <td class="muted">${p.client}</td>
-        <td class="cell-mono" style="font-size:11px;">${fmtDate(p.start)} → ${fmtDate(p.target)}</td>
-        <td style="min-width:120px;"><div class="progress-track"><div class="progress-fill" style="width:${p.progress}%"></div></div><span class="cell-mono" style="font-size:10.5px;">${p.progress}%</span></td>
-        <td class="cell-mono">${fmtMoney(p.budget)}</td>
-        <td class="cell-mono">${fmtMoney(p.spend)}</td>
-        <td><span class="badge ${p.status==='On Track'?'badge-green':'badge-amber'}">${p.status}</span></td>
-        <td><button class="btn btn-sm btn-ghost-danger" onclick="removeItem('projects','${p.id}')">Delete</button></td>
-      </tr>`).join('')}</tbody>`;
+        <th>Project</th>
+        <th>Description</th>
+        <th>Start Date</th>
+        <th>Target Date</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      ${
+        backendProjects.length
+          ? backendProjects.map(p => `
+              <tr>
+                <td>
+                  <b>${p.project_name}</b>
+                </td>
+
+                <td class="muted">
+                  ${p.description || '—'}
+                </td>
+
+                <td class="cell-mono">
+                  ${fmtDate(p.start_date)}
+                </td>
+
+                <td class="cell-mono">
+                  ${fmtDate(p.end_date)}
+                </td>
+
+                <td>
+                  <span class="badge ${
+                    p.status === 'IN_PROGRESS'
+                      ? 'badge-green'
+                      : 'badge-amber'
+                  }">
+                    ${p.status}
+                  </span>
+                </td>
+              </tr>
+            `).join('')
+          : `
+              <tr>
+                <td colspan="5" class="muted">
+                  No projects found in Django.
+                </td>
+              </tr>
+            `
+      }
+    </tbody>
+  `;
+
   s.appendChild(tbl);
   els.content.appendChild(s);
 }
-function openProjectForm(){
+async function openProjectForm() {
   openModal('New Project', [
     {k:'name', label:'Project Name', type:'text', req:true},
     {k:'client', label:'Client', type:'select', options:state.clients.map(c=>c.name), req:true},
     {k:'start', label:'Start Date', type:'date', req:true},
     {k:'target', label:'Target End Date', type:'date', req:true},
     {k:'budget', label:'Budget (₹)', type:'number', req:true},
-  ], data=>{
-    state.projects.unshift({id:uid(), name:data.name, client:data.client, start:data.start, target:data.target,
-      budget:Number(data.budget), spend:0, progress:0, status:'On Track'});
-    toast('Project created'); showView('projects');
+  ], async data => {
+
+    try {
+      console.log('CREATING DJANGO PROJECT:', data);
+
+      const newProject = await createBackendProject({
+  project_name: data.name,
+  description: 'Project created from CRM',
+  start_date: data.start,
+  end_date: data.target,
+  status: 'IN_PROGRESS',
+  site: 2
+});
+
+      console.log('DJANGO PROJECT CREATED:', newProject);
+
+      toast('Project created in Django');
+
+      showView('projects');
+
+    } catch (error) {
+      console.error('DJANGO PROJECT CREATE ERROR:', error);
+      toast('Failed to create project');
+    }
   });
 }
 
