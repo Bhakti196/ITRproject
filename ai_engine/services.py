@@ -344,3 +344,63 @@ def dpr_progress_analysis(project_id):
         "project_name": project.project_name,
         "dpr_analysis": results,
     }
+def generate_progress_report(project_id):
+    project = Project.objects.get(id=project_id)
+
+    reports = (
+        DailyProgressReport.objects
+        .filter(task__project=project)
+        .select_related("task")
+        .order_by("-report_date")
+    )
+
+    if not reports.exists():
+        return {
+            "project_id": project.id,
+            "project_name": project.project_name,
+            "report": "No daily progress reports available."
+        }
+
+    latest_report = reports.first()
+
+    total_reports = reports.count()
+
+    average_progress = sum(
+        report.progress_percentage for report in reports
+    ) / total_reports
+
+    total_workers = sum(
+        report.workers_present for report in reports
+    )
+
+    if average_progress < 30:
+        overall_status = "LOW PROGRESS"
+    elif average_progress < 70:
+        overall_status = "MODERATE PROGRESS"
+    else:
+        overall_status = "GOOD PROGRESS"
+
+    report_text = (
+        f"Project: {project.project_name}\n"
+        f"Progress Report Date: {latest_report.report_date}\n\n"
+        f"Latest Task: {latest_report.task.task_name}\n"
+        f"Latest Progress: {latest_report.progress_percentage}%\n"
+        f"Workers Present: {latest_report.workers_present}\n"
+        f"Weather: {latest_report.weather}\n\n"
+        f"Work Completed:\n"
+        f"{latest_report.work_done}\n\n"
+        f"Remarks:\n"
+        f"{latest_report.remarks}\n\n"
+        f"Average Project Progress: {round(average_progress, 2)}%\n"
+        f"Total Worker Attendance Records: {total_workers}\n"
+        f"Overall Status: {overall_status}"
+    )
+
+    return {
+        "project_id": project.id,
+        "project_name": project.project_name,
+        "report_date": latest_report.report_date,
+        "average_progress": round(average_progress, 2),
+        "overall_status": overall_status,
+        "report": report_text,
+    }

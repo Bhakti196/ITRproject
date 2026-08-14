@@ -9,6 +9,7 @@ from .views import (
     DelayPredictionView,
     MaterialRequirementView,
     DPRProgressAnalysisView,
+    ProgressReportView,
 )
 
 urlpatterns = [
@@ -39,5 +40,9 @@ urlpatterns = [
     path(
     "dpr-progress/<int:project_id>/",
     DPRProgressAnalysisView.as_view(),
+    ),
+    path(
+    "progress-report/<int:project_id>/",
+    ProgressReportView.as_view(),
     ),
 ]

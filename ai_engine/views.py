@@ -10,6 +10,7 @@ from .services import (
     delay_prediction,
     material_requirement_forecast,
     dpr_progress_analysis,
+    generate_progress_report,
 )
 
 class ProjectRiskView(APIView):
@@ -97,6 +98,18 @@ class DPRProgressAnalysisView(APIView):
     def get(self, request, project_id):
         try:
             result = dpr_progress_analysis(project_id)
+            return Response(result)
+
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+class ProgressReportView(APIView):
+
+    def get(self, request, project_id):
+        try:
+            result = generate_progress_report(project_id)
             return Response(result)
 
         except Exception as e:
