@@ -8,8 +8,8 @@ from .views import (
     LabourRequirementView,
     DelayPredictionView,
     MaterialRequirementView,
+    DPRProgressAnalysisView,
 )
-
 
 urlpatterns = [
     path(
@@ -35,5 +35,9 @@ urlpatterns = [
     path(
     "material-requirement/<int:project_id>/",
     MaterialRequirementView.as_view(),
+    ),
+    path(
+    "dpr-progress/<int:project_id>/",
+    DPRProgressAnalysisView.as_view(),
     ),
 ]

@@ -304,3 +304,43 @@ def material_requirement_forecast(project_id):
         "project_id": project_id,
         "materials": results,
     }
+def dpr_progress_analysis(project_id):
+    project = Project.objects.get(id=project_id)
+
+    reports = (
+        DailyProgressReport.objects
+        .filter(task__project=project)
+        .select_related("task")
+        .order_by("-report_date")
+    )
+
+    results = []
+
+    for report in reports:
+        progress = report.progress_percentage
+
+        if progress < 30:
+            progress_status = "LOW"
+        elif progress < 70:
+            progress_status = "MODERATE"
+        else:
+            progress_status = "GOOD"
+
+        results.append({
+            "report_id": report.id,
+            "task_id": report.task.id,
+            "task_name": report.task.task_name,
+            "report_date": report.report_date,
+            "progress_percentage": progress,
+            "workers_present": report.workers_present,
+            "weather": report.weather,
+            "progress_status": progress_status,
+            "work_done": report.work_done,
+            "remarks": report.remarks,
+        })
+
+    return {
+        "project_id": project.id,
+        "project_name": project.project_name,
+        "dpr_analysis": results,
+    }
