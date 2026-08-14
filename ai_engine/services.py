@@ -3,6 +3,7 @@ from datetime import date
 from projects.models import Project
 from tasks.models import Task
 from dpr.models import DailyProgressReport
+from django.utils import timezone
 
 
 def project_completion_risk(project_id):
@@ -204,4 +205,70 @@ def labour_requirement_prediction(project_id):
         "project_id": project.id,
         "project_name": project.project_name,
         "labour_forecast": results,
+    }
+
+from django.utils import timezone
+
+
+def delay_prediction(project_id):
+    project = Project.objects.get(id=project_id)
+
+    tasks = Task.objects.filter(project=project)
+
+    results = []
+
+    today = timezone.localdate()
+
+    for task in tasks:
+        if task.due_date:
+            days_remaining = (task.due_date - today).days
+        else:
+            days_remaining = None
+
+        if task.status == "DONE":
+            risk_level = "LOW"
+            reason = "Task is completed."
+
+        elif days_remaining is not None and days_remaining < 0:
+            risk_level = "HIGH"
+            reason = "Task is overdue and not completed."
+
+        elif (
+            days_remaining is not None
+            and days_remaining <= 7
+            and task.status == "TODO"
+            and task.priority == "HIGH"
+        ):
+            risk_level = "HIGH"
+            reason = (
+                "High-priority task is not started and is due within 7 days."
+            )
+
+        elif (
+            days_remaining is not None
+            and days_remaining <= 7
+            and task.status == "TODO"
+        ):
+            risk_level = "MEDIUM"
+            reason = "Task is not started and is due within 7 days."
+
+        else:
+            risk_level = "LOW"
+            reason = "Task is currently on track."
+
+        results.append({
+            "task_id": task.id,
+            "task_name": task.task_name,
+            "status": task.status,
+            "priority": task.priority,
+            "due_date": task.due_date,
+            "days_remaining": days_remaining,
+            "risk_level": risk_level,
+            "reason": reason,
+        })
+
+    return {
+        "project_id": project.id,
+        "project_name": project.project_name,
+        "delay_risk": results,
     }

@@ -6,6 +6,7 @@ from .views import (
     ProjectCostRiskView,
     MaterialStockView,
     LabourRequirementView,
+    DelayPredictionView,
 )
 
 
@@ -25,5 +26,9 @@ urlpatterns = [
     path(
         "labour-requirement/<int:project_id>/",
         LabourRequirementView.as_view(),
+    ),
+    path(
+    "delay-risk/<int:project_id>/",
+    DelayPredictionView.as_view(),
     ),
 ]
