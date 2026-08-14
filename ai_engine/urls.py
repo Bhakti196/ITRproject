@@ -30,16 +30,16 @@ urlpatterns = [
         LabourRequirementView.as_view(),
     ),
     path(
-    "delay-risk/<int:project_id>/",
-    DelayPredictionView.as_view(),
+    "dpr-progress/<int:project_id>/",
+    DPRProgressAnalysisView.as_view(),
     ),
     path(
     "material-requirement/<int:project_id>/",
     MaterialRequirementView.as_view(),
     ),
     path(
-    "dpr-progress/<int:project_id>/",
-    DPRProgressAnalysisView.as_view(),
+    "delay-prediction/<int:project_id>/",
+    DelayPredictionView.as_view(),
     ),
     path(
     "progress-report/<int:project_id>/",
