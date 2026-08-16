@@ -505,6 +505,34 @@
 const uid = (() => { let n = 1000; return () => 'ID-' + (n++); })();
 const API_BASE = 'http://127.0.0.1:8001/api';
 let accessToken = localStorage.getItem('access_token') || '';
+async function loginBackend(username, password) {
+  const response = await fetch(`${API_BASE}/login/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      username: username,
+      password: password
+    })
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(`LOGIN ${response.status}: ${JSON.stringify(data)}`);
+  }
+
+  accessToken = data.access;
+
+  localStorage.setItem('access_token', data.access);
+
+  if (data.refresh) {
+    localStorage.setItem('refresh_token', data.refresh);
+  }
+
+  console.log('LOGIN SUCCESS');
+}
 async function apiFetch(endpoint) {
   const token = localStorage.getItem('access_token') || '';
 
@@ -589,6 +617,117 @@ async function getBackendMaterials() {
     return [];
   }
 }
+async function createBackendLabour(labourData) {
+  const response = await fetch(`${API_BASE}/labour/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify(labourData)
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`CREATE LABOUR ${response.status}: ${text}`);
+  }
+
+  return await response.json();
+}
+async function getBackendLabour() {
+  try {
+    const labour = await apiFetch('/labour/');
+    console.log('DJANGO LABOUR:', labour);
+    return labour;
+  } catch (error) {
+    console.error('DJANGO LABOUR ERROR:', error);
+    return [];
+  }
+}
+async function createBackendEquipment(equipmentData) {
+  const response = await fetch(`${API_BASE}/equipment/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify(equipmentData)
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`CREATE EQUIPMENT ${response.status}: ${text}`);
+  }
+
+  return await response.json();
+}
+async function getBackendEquipment() {
+  try {
+    const equipment = await apiFetch('/equipment/');
+    console.log('DJANGO EQUIPMENT:', equipment);
+    return equipment;
+  } catch (error) {
+    console.error('DJANGO EQUIPMENT ERROR:', error);
+    return [];
+  }
+}
+async function createBackendBilling(billingData) {
+  const response = await fetch(`${API_BASE}/billing/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify(billingData)
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`CREATE BILLING ${response.status}: ${text}`);
+  }
+
+  return await response.json();
+}
+
+async function getBackendBilling() {
+  try {
+    const billing = await apiFetch('/billing/');
+    console.log('DJANGO BILLING:', billing);
+    return billing;
+  } catch (error) {
+    console.error('DJANGO BILLING ERROR:', error);
+    return [];
+  }
+}
+async function createBackendPayment(paymentData) {
+  const response = await fetch(`${API_BASE}/payments/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify(paymentData)
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`CREATE PAYMENT ${response.status}: ${text}`);
+  }
+
+  return await response.json();
+}
+
+async function getBackendPayments() {
+  try {
+    const payments = await apiFetch('/payments/');
+    console.log('DJANGO PAYMENTS:', payments);
+    return payments;
+  } catch (error) {
+    console.error('DJANGO PAYMENTS ERROR:', error);
+    return [];
+  }
+}
+
 async function getBackendSites() {
   try {
     const sites = await apiFetch('/sites/');
@@ -616,6 +755,7 @@ async function createBackendMaterial(materialData) {
 
   return await response.json();
 }
+
 const todayISO = () => new Date().toISOString().slice(0,10);
 function normalizeBackendProject(bp) {
   return {
@@ -847,172 +987,276 @@ async function loadProjectRisk(projectId, card) {
 /* =======================================================
    DASHBOARD
 ======================================================= */
-async function renderDashboard(){
+async function renderDashboard() {
   const backendProjects = await getBackendProjects();
-const backendSites = await getBackendSites();
+  const backendSites = await getBackendSites();
+  const backendBilling = await getBackendBilling();
 
-const totalBudget = state.projects.reduce((s,p)=>s+p.budget,0);
-const totalSpend = state.projects.reduce((s,p)=>s+p.spend,0);
+  // Temporary values until budget/spend are available from Django.
+  // Keep these at 0 rather than mixing old mock state into the
+  // live Django dashboard.
+  const totalBudget = 0;
+  const totalSpend = 0;
 
-const totalSites = backendSites.length;
+  const totalSites = backendSites.length;
 
-const dueInvoices = state.invoices
-  .filter(i => i.status !== 'Paid')
-  .reduce((s, i) => s + i.amount, 0);
+  // Billing is still being integrated separately.
+  
+
+const dueInvoices = backendBilling
+  .filter(i => i.status !== 'PAID')
+  .reduce((sum, i) => sum + Number(i.amount || 0), 0);
+
+const overdueInvoices = backendBilling
+  .filter(i => i.status !== 'PAID').length;
 
   const kpiWrap = document.createElement('div');
   kpiWrap.className = 'grid grid-4';
+
   kpiWrap.innerHTML = `
     <div class="kpi">
-    <div class="kpi-label">Active Projects</div>
-    <div class="kpi-value">${backendProjects.length}</div>
-    <div class="kpi-delta">${totalSites} sites in Django</div>
-    <div class="kpi"><div class="kpi-label">Portfolio Budget</div><div class="kpi-value">${fmtMoney(totalBudget)}</div><div class="kpi-delta">${fmtMoney(totalSpend)} spent</div></div>
-    <div class="kpi"><div class="kpi-label">Spend Utilisation</div><div class="kpi-value">${Math.round(totalSpend/totalBudget*100)}%</div><div class="kpi-delta ${totalSpend/totalBudget>0.75?'down':'up'}">of total budget</div></div>
-    <div class="kpi"><div class="kpi-label">Outstanding Receivables</div><div class="kpi-value">${fmtMoney(dueInvoices)}</div><div class="kpi-delta down">${state.invoices.filter(i=>i.status==='Overdue').length} overdue invoice(s)</div></div>
+      <div class="kpi-label">Active Projects</div>
+      <div class="kpi-value">${backendProjects.length}</div>
+      <div class="kpi-delta">${totalSites} sites in Django</div>
+    </div>
+
+    <div class="kpi">
+      <div class="kpi-label">Portfolio Budget</div>
+      <div class="kpi-value">${fmtMoney(totalBudget)}</div>
+      <div class="kpi-delta">${fmtMoney(totalSpend)} spent</div>
+    </div>
+
+    <div class="kpi">
+      <div class="kpi-label">Spend Utilisation</div>
+      <div class="kpi-value">
+        ${totalBudget > 0
+          ? Math.round(totalSpend / totalBudget * 100)
+          : 0}%
+      </div>
+      <div class="kpi-delta">
+        of total budget
+      </div>
+    </div>
+
+    <div class="kpi">
+  <div class="kpi-label">Outstanding Receivables</div>
+  <div class="kpi-value">${fmtMoney(dueInvoices)}</div>
+  <div class="kpi-delta down">
+    ${overdueInvoices} outstanding invoice(s)
+  </div>
+</div>
   `;
+
   els.content.appendChild(kpiWrap);
 
-  const aiSheet = sheet('AI Intelligence Layer', 'Predictive Signals', 'Recalculated from live project & site data');
+
+  // =========================================================
+  // AI INTELLIGENCE
+  // =========================================================
+
+  const aiSheet = sheet(
+    'AI Intelligence Layer',
+    'Predictive Signals',
+    'Recalculated from live project & site data'
+  );
+
   const aiGrid = document.createElement('div');
   aiGrid.className = 'grid grid-3 section-gap';
 
-  const dashboardProjects = backendProjects.map(normalizeBackendProject);
+  const dashboardProjects =
+    backendProjects.map(normalizeBackendProject);
+
   dashboardProjects.forEach(p => {
-  const c = AI.completion(p);
-  const co = AI.costOverrun(p);
-  const risk = AI.riskLevel(p);
+    const card = document.createElement('div');
 
-  const card = document.createElement('div');
+    card.className = 'ai-card';
 
-  card.className = 'ai-card';
+    card.innerHTML = `
+      <div class="ai-card-head">
+        <span class="ai-tag">PROJECT RISK</span>
+      </div>
 
-  card.innerHTML = `
-    <div class="ai-card-head">
-      <span class="ai-tag">PROJECT RISK</span>
-    </div>
+      <div class="ai-card-title">
+        ${p.name}
+      </div>
 
-    <div class="ai-card-title">
-      ${p.name}
-    </div>
+      <div class="ai-card-body" style="margin-top:6px;">
+        Start date:
+        <b>${fmtDate(p.start)}</b>
+        <br>
 
-    <div class="ai-card-body" style="margin-top:6px;">
-      Start date:
-      <b>${fmtDate(p.start)}</b>
-      <br>
+        Target date:
+        <b>${fmtDate(p.target)}</b>
+        <br>
 
-      Target date:
-      <b>${fmtDate(p.target)}</b>
-      <br>
+        Project status:
+        <b>${p.status}</b>
+        <br>
 
-      Project status:
-      <b>${p.status}</b>
-      <br>
+        AI Risk:
+        <b class="backend-risk-level"
+           style="text-transform:capitalize">
+          Loading...
+        </b>
+      </div>
+    `;
 
-      AI Risk:
-      <b class="backend-risk-level"
-         style="text-transform:capitalize">
-        Loading...
-      </b>
+    aiGrid.appendChild(card);
+
+    // Django project's real database ID
+    loadProjectRisk(p.id, card);
+  });
+
+  aiSheet.appendChild(aiGrid);
+
+
+  // =========================================================
+  // MATERIAL + LABOUR + SAFETY
+  // =========================================================
+
+  const aiGrid2 = document.createElement('div');
+  aiGrid2.className = 'grid grid-3 section-gap';
+
+  const matAlerts = AI.materialAlerts();
+
+  aiGrid2.innerHTML += `
+    <div class="ai-card ${matAlerts.length ? 'risk-med' : 'risk-low'}">
+      <div class="ai-card-head">
+        <span class="ai-tag">Material Forecast</span>
+      </div>
+
+      <div class="ai-card-title">
+        Reorder Alerts
+      </div>
+
+      <div class="ai-card-body" style="margin-top:6px;">
+        ${
+          matAlerts.length
+            ? matAlerts
+                .map(m =>
+                  `<b>${m.item}</b> at ${m.site} —
+                   ${m.qty} ${m.unit}
+                   (below ${m.threshold})`
+                )
+                .join('<br>')
+            : 'All stock levels within safe threshold.'
+        }
+      </div>
     </div>
   `;
 
-  aiGrid.appendChild(card);
+  // Keep existing AI labour/safety logic for now.
+  // We'll replace state.sites with Django sites in the next step.
+  backendSites.slice(0, 2).forEach(s => {
+    const siteName = s.site_name;
 
-  // Use Django project's real database ID
-  loadProjectRisk(p.id, card);
-});
-aiSheet.appendChild(aiGrid);
-  
-  const aiGrid2 = document.createElement('div');
-  aiGrid2.className = 'grid grid-3 section-gap';
-  const matAlerts = AI.materialAlerts();
-  aiGrid2.innerHTML += `
-    <div class="ai-card ${matAlerts.length?'risk-med':'risk-low'}">
-      <div class="ai-card-head"><span class="ai-tag">Material Forecast</span></div>
-      <div class="ai-card-title">Reorder Alerts</div>
-      <div class="ai-card-body" style="margin-top:6px;">
-        ${matAlerts.length ? matAlerts.map(m=>`<b>${m.item}</b> at ${m.site} — ${m.qty} ${m.unit} (below ${m.threshold})`).join('<br>') : 'All stock levels within safe threshold.'}
-      </div>
-    </div>`;
+const lf = AI.labourForecast(siteName);
+const sr = AI.safetyRisk(siteName);
 
-  state.sites.slice(0,2).forEach(s=>{
-    const lf = AI.labourForecast(s.name);
-    const sr = AI.safetyRisk(s.name);
     aiGrid2.innerHTML += `
       <div class="ai-card risk-${sr.level}">
-        <div class="ai-card-head"><span class="ai-tag">Labour + Safety</span></div>
-        <div class="ai-card-title">${s.name}</div>
-        <div class="ai-card-body" style="margin-top:6px;">
-          Avg. attendance: <b>${Math.round(lf.avgAtt*100)}%</b> ${lf.shortfall ? '— below optimal, workforce top-up recommended' : '— adequate deployment'}<br>
-          Safety flags (recent logs): <b>${sr.flagged.length}</b> ${sr.level==='high' ? '— escalate to site supervisor' : sr.level==='med' ? '— monitor closely' : '— no action needed'}
+        <div class="ai-card-head">
+          <span class="ai-tag">Labour + Safety</span>
         </div>
-      </div>`;
+
+        <div class="ai-card-title">${siteName}</div>
+        </div>
+
+        <div class="ai-card-body" style="margin-top:6px;">
+          Avg. attendance:
+          <b>${Math.round(lf.avgAtt * 100)}%</b>
+
+          ${
+            lf.shortfall
+              ? '— below optimal, workforce top-up recommended'
+              : '— adequate deployment'
+          }
+
+          <br>
+
+          Safety flags (recent logs):
+          <b>${sr.flagged.length}</b>
+
+          ${
+            sr.level === 'high'
+              ? '— escalate to site supervisor'
+              : sr.level === 'med'
+                ? '— monitor closely'
+                : '— no action needed'
+          }
+        </div>
+      </div>
+    `;
   });
+
   aiSheet.appendChild(aiGrid2);
   els.content.appendChild(aiSheet);
 
-   const projSheet = sheet(
-  'Execution',
-  'Project Status',
-  `${backendProjects.length} active`
-);
 
-const tbl = document.createElement('table');
+  // =========================================================
+  // PROJECT STATUS
+  // =========================================================
 
-tbl.innerHTML = `
-  <thead>
-    <tr>
-      <th>Project</th>
-      <th>Start Date</th>
-      <th>Target Date</th>
-      <th>Status</th>
-    </tr>
-  </thead>
+  const projSheet = sheet(
+    'Execution',
+    'Project Status',
+    `${backendProjects.length} projects`
+  );
 
-  <tbody>
-    ${
-      backendProjects.length
-        ? backendProjects.map(p => `
-            <tr>
-              <td>
-                ${p.project_name}
-              </td>
+  const tbl = document.createElement('table');
 
-              <td class="cell-mono">
-                ${fmtDate(p.start_date)}
-              </td>
+  tbl.innerHTML = `
+    <thead>
+      <tr>
+        <th>Project</th>
+        <th>Start Date</th>
+        <th>Target Date</th>
+        <th>Status</th>
+      </tr>
+    </thead>
 
-              <td class="cell-mono">
-                ${fmtDate(p.end_date)}
-              </td>
+    <tbody>
+      ${
+        backendProjects.length
+          ? backendProjects.map(p => `
+              <tr>
+                <td>
+                  <b>${p.project_name}</b>
+                </td>
 
-              <td>
-                <span class="badge ${
-                  p.status === 'IN_PROGRESS'
-                    ? 'badge-green'
-                    : 'badge-amber'
-                }">
-                  ${p.status}
-                </span>
-              </td>
-            </tr>
-          `).join('')
-        : `
-          <tr>
-            <td colspan="4" class="muted">
-              No projects found in Django.
-            </td>
-          </tr>
-        `
-    }
-  </tbody>
-`;
+                <td class="cell-mono">
+                  ${fmtDate(p.start_date)}
+                </td>
 
-projSheet.appendChild(tbl);
-els.content.appendChild(projSheet);
+                <td class="cell-mono">
+                  ${fmtDate(p.end_date)}
+                </td>
+
+                <td>
+                  <span class="badge ${
+                    p.status === 'IN_PROGRESS'
+                      ? 'badge-green'
+                      : 'badge-amber'
+                  }">
+                    ${p.status}
+                  </span>
+                </td>
+              </tr>
+            `).join('')
+          : `
+              <tr>
+                <td colspan="4" class="muted">
+                  No projects found in Django.
+                </td>
+              </tr>
+          `
+      }
+    </tbody>
+  `;
+
+  projSheet.appendChild(tbl);
+  els.content.appendChild(projSheet);
 }
-
 /* =======================================================
    CLIENTS
 ======================================================= */
@@ -1080,7 +1324,10 @@ function openContractorForm(){
    PROJECTS
 ======================================================= */
 async function renderProjects() {
+  
   const backendProjects = await getBackendProjects();
+  const backendSites = await getBackendSites();
+  
 
   const s = sheet(
     'Execution',
@@ -1758,35 +2005,167 @@ function openInvoiceForm(){
 /* =======================================================
    PAYMENTS
 ======================================================= */
-function renderPayments(){
-  const s = sheet('Finance', 'Payment Records', `${state.payments.length} transactions`);
+async function renderPayments() {
+  const backendPayments = await getBackendPayments();
+
+  const s = sheet(
+    'Finance',
+    'Payment Records',
+    `${backendPayments.length} transactions`
+  );
+
   const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th>Reference</th><th>To / From</th><th>Type</th><th>Amount</th><th>Method</th><th>Date</th><th>Status</th></tr></thead>
-    <tbody>${state.payments.map(p=>`
+
+  tbl.innerHTML = `
+    <thead>
       <tr>
-        <td class="cell-mono">${p.ref}</td>
-        <td>${p.to}</td>
-        <td class="muted">${p.type}</td>
-        <td class="cell-mono">${fmtMoney(p.amount)}</td>
-        <td>${p.method}</td>
-        <td class="cell-mono">${fmtDate(p.date)}</td>
-        <td><span class="badge ${p.status==='Completed'?'badge-green':'badge-amber'}">${p.status}</span></td>
-      </tr>`).join('')}</tbody>`;
+        <th>Reference</th>
+        <th>Bill</th>
+        <th>Amount</th>
+        <th>Method</th>
+        <th>Date</th>
+        <th>Remarks</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      ${
+        backendPayments.length
+          ? backendPayments.map(p => `
+              <tr>
+                <td class="cell-mono">
+                  ${p.reference_number}
+                </td>
+
+                <td>
+                  ${p.bill || '—'}
+                </td>
+
+                <td class="cell-mono">
+                  ${fmtMoney(Number(p.amount))}
+                </td>
+
+                <td>
+                  ${p.payment_method}
+                </td>
+
+                <td class="cell-mono">
+                  ${fmtDate(p.payment_date)}
+                </td>
+
+                <td class="muted">
+                  ${p.remarks || '—'}
+                </td>
+              </tr>
+            `).join('')
+          : `
+              <tr>
+                <td colspan="6" class="muted">
+                  No payments found in Django.
+                </td>
+              </tr>
+          `
+      }
+    </tbody>
+  `;
+
   s.appendChild(tbl);
   els.content.appendChild(s);
 }
-function openPaymentForm(){
-  openModal('New Payment', [
-    {k:'ref', label:'Reference No.', type:'text', req:true},
-    {k:'to', label:'Paid To / Received From', type:'text', req:true},
-    {k:'type', label:'Type', type:'select', options:['Contractor','Client Receipt','Supplier','Other'], req:true},
-    {k:'amount', label:'Amount (₹)', type:'number', req:true},
-    {k:'method', label:'Method', type:'select', options:['Bank Transfer','RTGS','UPI','Cheque','Cash']},
-    {k:'date', label:'Date', type:'date', req:true},
-  ], data=>{
-    state.payments.unshift({id:uid(), ref:data.ref, to:data.to, type:data.type, amount:Number(data.amount), method:data.method||'Bank Transfer', date:data.date, status:'Pending'});
-    toast('Payment recorded'); showView('payments');
-  });
+async function openPaymentForm() {
+  try {
+    const bills = await getBackendBilling();
+
+    if (!bills.length) {
+      toast('No bills available. Create a bill first.');
+      return;
+    }
+
+    openModal('New Payment', [
+      {
+        k: 'bill',
+        label: 'Bill / Invoice',
+        type: 'select',
+        options: bills.map(b => ({
+          value: b.id,
+          label: `${b.invoice_number} — ₹${Number(b.amount).toLocaleString('en-IN')} — ${b.status}`
+        })),
+        req: true
+      },
+
+      {
+        k: 'payment_date',
+        label: 'Payment Date',
+        type: 'date',
+        req: true
+      },
+
+      {
+        k: 'amount',
+        label: 'Amount (₹)',
+        type: 'number',
+        req: true
+      },
+
+      {
+        k: 'payment_method',
+        label: 'Payment Method',
+        type: 'select',
+        options: [
+          { value: 'CASH', label: 'Cash' },
+          { value: 'BANK', label: 'Bank Transfer' },
+          { value: 'UPI', label: 'UPI' },
+          { value: 'CHEQUE', label: 'Cheque' }
+        ],
+        req: true
+      },
+
+      {
+        k: 'reference_number',
+        label: 'Reference Number',
+        type: 'text',
+        req: true
+      },
+
+      {
+        k: 'remarks',
+        label: 'Remarks',
+        type: 'textarea'
+      }
+
+    ], async data => {
+
+      try {
+
+        const payment = await createBackendPayment({
+          bill: Number(data.bill),
+          payment_date: data.payment_date,
+          amount: Number(data.amount),
+          payment_method: data.payment_method,
+          reference_number: data.reference_number,
+          remarks: data.remarks || ''
+        });
+
+        console.log('CREATED PAYMENT:', payment);
+
+        toast('Payment recorded in Django');
+        showView('payments');
+
+      } catch (error) {
+
+        console.error('PAYMENT ERROR:', error);
+        toast('Payment could not be recorded');
+
+      }
+
+    });
+
+  } catch (error) {
+
+    console.error('PAYMENT FORM ERROR:', error);
+    toast('Could not load bills');
+
+  }
 }
 
 /* =======================================================
