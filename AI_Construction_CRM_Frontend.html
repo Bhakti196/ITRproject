@@ -506,11 +506,15 @@ const uid = (() => { let n = 1000; return () => 'ID-' + (n++); })();
 const API_BASE = 'http://127.0.0.1:8001/api';
 let accessToken = localStorage.getItem('access_token') || '';
 async function apiFetch(endpoint) {
+  const token = localStorage.getItem('access_token') || '';
+
+  console.log('USING TOKEN:', token ? 'YES' : 'NO');
+
   const response = await fetch(`${API_BASE}${endpoint}`, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`
+      'Authorization': `Bearer ${token}`
     }
   });
 
@@ -538,6 +542,23 @@ async function createBackendProject(projectData) {
 
   return await response.json();
 }
+async function createBackendSite(data) {
+  const response = await fetch(`${API_BASE}/sites/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify(data)
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`CREATE SITE ${response.status}: ${text}`);
+  }
+
+  return await response.json();
+}
 async function getBackendProjects() {
   try {
     const projects = await apiFetch('/projects/');
@@ -547,6 +568,53 @@ async function getBackendProjects() {
     console.error('DJANGO PROJECTS ERROR:', error);
     return [];
   }
+}
+async function getBackendDPR() {
+  try {
+    const dpr = await apiFetch('/dpr/');
+    console.log('DJANGO DPR:', dpr);
+    return dpr;
+  } catch (error) {
+    console.error('DJANGO DPR ERROR:', error);
+    return [];
+  }
+}
+async function getBackendMaterials() {
+  try {
+    const materials = await apiFetch('/materials/');
+    console.log('DJANGO MATERIALS:', materials);
+    return materials;
+  } catch (error) {
+    console.error('DJANGO MATERIALS ERROR:', error);
+    return [];
+  }
+}
+async function getBackendSites() {
+  try {
+    const sites = await apiFetch('/sites/');
+    console.log('DJANGO SITES:', sites);
+    return sites;
+  } catch (error) {
+    console.error('DJANGO SITES ERROR:', error);
+    return [];
+  }
+}
+async function createBackendMaterial(materialData) {
+  const response = await fetch(`${API_BASE}/materials/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify(materialData)
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`CREATE MATERIAL ${response.status}: ${text}`);
+  }
+
+  return await response.json();
 }
 const todayISO = () => new Date().toISOString().slice(0,10);
 function normalizeBackendProject(bp) {
@@ -781,10 +849,16 @@ async function loadProjectRisk(projectId, card) {
 ======================================================= */
 async function renderDashboard(){
   const backendProjects = await getBackendProjects();
-  const totalBudget = state.projects.reduce((s,p)=>s+p.budget,0);
-  const totalSpend = state.projects.reduce((s,p)=>s+p.spend,0);
-  const activeSites = state.sites.filter(s=>s.status==='Active').length;
-  const dueInvoices = state.invoices.filter(i=>i.status!=='Paid').reduce((s,i)=>s+i.amount,0);
+const backendSites = await getBackendSites();
+
+const totalBudget = state.projects.reduce((s,p)=>s+p.budget,0);
+const totalSpend = state.projects.reduce((s,p)=>s+p.spend,0);
+
+const totalSites = backendSites.length;
+
+const dueInvoices = state.invoices
+  .filter(i => i.status !== 'Paid')
+  .reduce((s, i) => s + i.amount, 0);
 
   const kpiWrap = document.createElement('div');
   kpiWrap.className = 'grid grid-4';
@@ -792,7 +866,7 @@ async function renderDashboard(){
     <div class="kpi">
     <div class="kpi-label">Active Projects</div>
     <div class="kpi-value">${backendProjects.length}</div>
-    <div class="kpi-delta">${activeSites} sites live</div></div>
+    <div class="kpi-delta">${totalSites} sites in Django</div>
     <div class="kpi"><div class="kpi-label">Portfolio Budget</div><div class="kpi-value">${fmtMoney(totalBudget)}</div><div class="kpi-delta">${fmtMoney(totalSpend)} spent</div></div>
     <div class="kpi"><div class="kpi-label">Spend Utilisation</div><div class="kpi-value">${Math.round(totalSpend/totalBudget*100)}%</div><div class="kpi-delta ${totalSpend/totalBudget>0.75?'down':'up'}">of total budget</div></div>
     <div class="kpi"><div class="kpi-label">Outstanding Receivables</div><div class="kpi-value">${fmtMoney(dueInvoices)}</div><div class="kpi-delta down">${state.invoices.filter(i=>i.status==='Overdue').length} overdue invoice(s)</div></div>
@@ -1032,22 +1106,10 @@ async function renderProjects() {
         backendProjects.length
           ? backendProjects.map(p => `
               <tr>
-                <td>
-                  <b>${p.project_name}</b>
-                </td>
-
-                <td class="muted">
-                  ${p.description || '—'}
-                </td>
-
-                <td class="cell-mono">
-                  ${fmtDate(p.start_date)}
-                </td>
-
-                <td class="cell-mono">
-                  ${fmtDate(p.end_date)}
-                </td>
-
+                <td><b>${p.project_name}</b></td>
+                <td class="muted">${p.description || '—'}</td>
+                <td class="cell-mono">${fmtDate(p.start_date)}</td>
+                <td class="cell-mono">${fmtDate(p.end_date)}</td>
                 <td>
                   <span class="badge ${
                     p.status === 'IN_PROGRESS'
@@ -1073,125 +1135,493 @@ async function renderProjects() {
   s.appendChild(tbl);
   els.content.appendChild(s);
 }
+
+
 async function openProjectForm() {
-  openModal('New Project', [
-    {k:'name', label:'Project Name', type:'text', req:true},
-    {k:'client', label:'Client', type:'select', options:state.clients.map(c=>c.name), req:true},
-    {k:'start', label:'Start Date', type:'date', req:true},
-    {k:'target', label:'Target End Date', type:'date', req:true},
-    {k:'budget', label:'Budget (₹)', type:'number', req:true},
-  ], async data => {
+  try {
+    const backendSites = await getBackendSites();
 
-    try {
-      console.log('CREATING DJANGO PROJECT:', data);
-
-      const newProject = await createBackendProject({
-  project_name: data.name,
-  description: 'Project created from CRM',
-  start_date: data.start,
-  end_date: data.target,
-  status: 'IN_PROGRESS',
-  site: 2
-});
-
-      console.log('DJANGO PROJECT CREATED:', newProject);
-
-      toast('Project created in Django');
-
-      showView('projects');
-
-    } catch (error) {
-      console.error('DJANGO PROJECT CREATE ERROR:', error);
-      toast('Failed to create project');
+    if (!backendSites.length) {
+      toast('No Django sites available. Create a site first.');
+      return;
     }
-  });
-}
 
+    openModal('New Project', [
+      {
+        k: 'name',
+        label: 'Project Name',
+        type: 'text',
+        req: true
+      },
+      {
+        k: 'description',
+        label: 'Description',
+        type: 'text',
+        req: true
+      },
+      {
+        k: 'site',
+        label: 'Site',
+        type: 'select',
+        options: backendSites.map(s => ({
+          value: s.id,
+          label: `${s.site_name} — ${s.location}`
+        })),
+        req: true
+      },
+      {
+        k: 'start',
+        label: 'Start Date',
+        type: 'date',
+        req: true
+      },
+      {
+        k: 'target',
+        label: 'Target End Date',
+        type: 'date',
+        req: true
+      }
+    ], async data => {
+
+      try {
+        console.log('CREATING DJANGO PROJECT:', data);
+
+        const newProject = await createBackendProject({
+          project_name: data.name,
+          description: data.description,
+          site: Number(data.site),
+          start_date: data.start,
+          end_date: data.target,
+          status: 'IN_PROGRESS'
+        });
+
+        console.log('DJANGO PROJECT CREATED:', newProject);
+
+        toast('Project created in Django');
+
+        showView('projects');
+
+      } catch (error) {
+        console.error('DJANGO PROJECT CREATE ERROR:', error);
+        toast('Failed to create project');
+      }
+    });
+
+  } catch (error) {
+    console.error('FAILED TO LOAD SITES:', error);
+    toast('Could not load Django sites');
+  }
+}
 /* =======================================================
    SITES
 ======================================================= */
-function renderSites(){
-  const s = sheet('Execution', 'Sites', `${state.sites.length} sites`);
-  const grid = document.createElement('div');
-  grid.className = 'grid grid-3';
-  state.sites.forEach(site=>{
-    const div = document.createElement('div');
-    div.className = 'kpi';
-    div.innerHTML = `
-      <div class="flex-between"><div class="kpi-label">${site.status}</div><span class="badge badge-green" style="font-size:9px;">● live</span></div>
-      <div style="font-family:'Space Grotesk'; font-weight:700; font-size:15px; margin-top:8px; color:#fff;">${site.name}</div>
-      <div class="muted" style="font-size:11.5px; margin-top:4px;">${site.location}</div>
-      <div class="muted" style="font-size:11.5px; margin-top:2px;">Project: ${site.project}</div>
-      <div style="display:flex; gap:16px; margin-top:12px; font-family:'IBM Plex Mono'; font-size:11px;">
-        <div>👷 ${site.workers} workers</div>
-        <div>🚜 ${site.equipment} units</div>
-      </div>
-      <div class="mini-note">Supervisor: ${site.supervisor}</div>
-    `;
-    grid.appendChild(div);
-  });
-  s.appendChild(grid);
+async function renderSites() {
+  const backendSites = await getBackendSites();
+
+  const s = sheet(
+    'Execution',
+    'Sites',
+    `${backendSites.length} sites`
+  );
+
+  const tbl = document.createElement('table');
+
+  tbl.innerHTML = `
+    <thead>
+      <tr>
+        <th>Site</th>
+        <th>Client</th>
+        <th>Location</th>
+        <th>Start Date</th>
+        <th>Target Date</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      ${
+        backendSites.length
+          ? backendSites.map(site => `
+              <tr>
+                <td>
+                  <b>${site.site_name}</b>
+                </td>
+
+                <td class="muted">
+                  ${site.client_name}
+                </td>
+
+                <td>
+                  ${site.location}
+                </td>
+
+                <td class="cell-mono">
+                  ${fmtDate(site.start_date)}
+                </td>
+
+                <td class="cell-mono">
+                  ${fmtDate(site.end_date)}
+                </td>
+
+                <td>
+                  <span class="badge ${
+                    site.status === 'ACTIVE'
+                      ? 'badge-green'
+                      : 'badge-amber'
+                  }">
+                    ${site.status}
+                  </span>
+                </td>
+              </tr>
+            `).join('')
+          : `
+              <tr>
+                <td colspan="6" class="muted">
+                  No sites found in Django.
+                </td>
+              </tr>
+            `
+      }
+    </tbody>
+  `;
+
+  s.appendChild(tbl);
   els.content.appendChild(s);
 }
-function openSiteForm(){
-  openModal('New Site', [
-    {k:'name', label:'Site Name', type:'text', req:true},
-    {k:'project', label:'Project', type:'select', options:state.projects.map(p=>p.name), req:true},
-    {k:'location', label:'Location', type:'text', req:true},
-    {k:'supervisor', label:'Site Supervisor', type:'text', req:true},
-  ], data=>{
-    state.sites.unshift({id:uid(), name:data.name, project:data.project, location:data.location, supervisor:data.supervisor, status:'Active', workers:0, equipment:0});
-    toast('Site added'); showView('sites');
-  });
+async function openSiteForm() {
+  try {
+    const backendProjects = await getBackendProjects();
+
+    if (!backendProjects.length) {
+      toast('No Django projects available. Create a project first.');
+      return;
+    }
+
+    openModal('New Site', [
+      {
+        k: 'name',
+        label: 'Site Name',
+        type: 'text',
+        req: true
+      },
+      {
+        k: 'client_name',
+        label: 'Client Name',
+        type: 'text',
+        req: true
+      },
+      {
+        k: 'project',
+        label: 'Project',
+        type: 'select',
+        options: backendProjects.map(p => ({
+          value: p.id,
+          label: p.project_name
+        })),
+        req: true
+      },
+      {
+        k: 'location',
+        label: 'Location',
+        type: 'text',
+        req: true
+      },
+      {
+        k: 'start_date',
+        label: 'Start Date',
+        type: 'date',
+        req: true
+      },
+      {
+        k: 'end_date',
+        label: 'Target End Date',
+        type: 'date',
+        req: true
+      }
+    ], async data => {
+
+      try {
+        console.log('CREATING DJANGO SITE:', data);
+
+        const newSite = await createBackendSite({
+          site_name: data.name,
+          client_name: data.client_name,
+          project: Number(data.project),
+          location: data.location,
+          start_date: data.start_date,
+          end_date: data.end_date,
+          status: 'PLANNED'
+        });
+
+        console.log('DJANGO SITE CREATED:', newSite);
+
+        toast('Site created in Django');
+
+        showView('sites');
+
+      } catch (error) {
+        console.error('DJANGO SITE CREATE ERROR:', error);
+        toast('Failed to create site');
+      }
+    });
+
+  } catch (error) {
+    console.error('FAILED TO LOAD PROJECTS:', error);
+    toast('Could not load Django projects');
+  }
 }
 
 /* =======================================================
    DAILY PROGRESS
 ======================================================= */
-function renderProgress(){
-  const s = sheet('Site Operations', 'Daily Progress Logs', `${state.progress.length} entries`);
+async function renderProgress() {
+  const backendDPR = await getBackendDPR();
+
+  const s = sheet(
+    'Site Operations',
+    'Daily Progress Logs',
+    `${backendDPR.length} entries`
+  );
+
   const list = document.createElement('div');
-  state.progress.slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).forEach(log=>{
-    const row = document.createElement('div');
-    row.style.cssText = 'padding:12px 0; border-bottom:1px solid var(--paper-dim);';
-    const flagged = ['unsafe','hazard','accident','fall','unguarded','loose','seepage','near-miss','injur'].some(k=>log.issues.toLowerCase().includes(k));
-    row.innerHTML = `
-      <div class="flex-between">
-        <div><b>${log.site}</b> <span class="muted cell-mono" style="font-size:11px;">· ${fmtDate(log.date)} · logged by ${log.by}</span></div>
-        ${flagged?'<span class="badge badge-red">Safety Flag</span>':'<span class="badge badge-green">Normal</span>'}
+
+  backendDPR
+    .slice()
+    .sort((a, b) =>
+      new Date(b.report_date) - new Date(a.report_date)
+    )
+    .forEach(log => {
+
+      const row = document.createElement('div');
+
+      row.style.cssText =
+        'padding:12px 0; border-bottom:1px solid var(--paper-dim);';
+
+      const remarks = log.remarks || '';
+      const activity = log.work_done || '—';
+
+      const flagged = [
+        'unsafe',
+        'hazard',
+        'accident',
+        'fall',
+        'unguarded',
+        'loose',
+        'seepage',
+        'near-miss',
+        'injur'
+      ].some(k =>
+        remarks.toLowerCase().includes(k)
+      );
+
+      row.innerHTML = `
+        <div class="flex-between">
+
+          <div>
+            <b>
+              DPR #${log.id}
+            </b>
+
+            <span
+              class="muted cell-mono"
+              style="font-size:11px;"
+            >
+              · ${fmtDate(log.report_date)}
+            </span>
+          </div>
+
+          ${
+            flagged
+              ? '<span class="badge badge-red">Safety Flag</span>'
+              : '<span class="badge badge-green">Normal</span>'
+          }
+
+        </div>
+
+        <div style="margin-top:6px; font-size:13px;">
+          ${activity}
+        </div>
+
+        <div
+          class="muted"
+          style="margin-top:5px; font-size:12px;"
+        >
+          Progress:
+          <b>${log.progress_percentage ?? 0}%</b>
+          &nbsp; · &nbsp;
+
+          Workers:
+          <b>${log.workers_present ?? 0}</b>
+          &nbsp; · &nbsp;
+
+          Weather:
+          <b>${log.weather || '—'}</b>
+        </div>
+
+        <div
+          class="muted"
+          style="margin-top:3px; font-size:12px;"
+        >
+          Remarks:
+          ${remarks || '—'}
+        </div>
+      `;
+
+      list.appendChild(row);
+    });
+
+  if (!backendDPR.length) {
+    list.innerHTML = `
+      <div class="muted" style="padding:20px 0;">
+        No Daily Progress Reports found in Django.
       </div>
-      <div style="margin-top:6px; font-size:13px;">${log.activity}</div>
-      <div class="muted" style="margin-top:3px; font-size:12px;">Issues: ${log.issues}</div>
     `;
-    list.appendChild(row);
-  });
+  }
+
   s.appendChild(list);
   els.content.appendChild(s);
 
-  const repSheet = sheet('AI Generative', 'AI Progress Report Generator', 'Auto-summarised from latest site logs');
+
+  /* ================================
+     AI PROGRESS REPORTS
+  ================================= */
+
+  const repSheet = sheet(
+    'AI Generative',
+    'AI Progress Report Generator',
+    'Auto-summarised from latest site logs'
+  );
+
   const repGrid = document.createElement('div');
   repGrid.className = 'grid grid-3';
-  state.sites.forEach(site=>{
+
+  state.sites.forEach(site => {
+
     const div = document.createElement('div');
+
     div.className = 'ai-card risk-low';
-    div.innerHTML = `<div class="ai-card-head"><span class="ai-tag">Report</span></div>
-      <div class="ai-card-title">${site.name}</div>
-      <div class="ai-card-body" style="margin-top:6px;">${AI.generateReport(site.name)}</div>`;
+
+    div.innerHTML = `
+      <div class="ai-card-head">
+        <span class="ai-tag">Report</span>
+      </div>
+
+      <div class="ai-card-title">
+        ${site.name}
+      </div>
+
+      <div
+        class="ai-card-body"
+        style="margin-top:6px;"
+      >
+        ${AI.generateReport(site.name)}
+      </div>
+    `;
+
     repGrid.appendChild(div);
   });
+
   repSheet.appendChild(repGrid);
   els.content.appendChild(repSheet);
 }
-function openProgressForm(){
-  openModal('New Progress Log', [
-    {k:'site', label:'Site', type:'select', options:state.sites.map(s=>s.name), req:true},
-    {k:'date', label:'Date', type:'date', req:true},
-    {k:'activity', label:'Activity Summary', type:'textarea', req:true},
-    {k:'issues', label:'Issues / Site Conditions', type:'textarea'},
-    {k:'by', label:'Logged By', type:'text', req:true},
-  ], data=>{
-    state.progress.unshift({id:uid(), site:data.site, date:data.date, activity:data.activity, issues:data.issues||'None reported', by:data.by});
-    toast('Progress log submitted'); showView('progress');
+async function openProgressForm() {
+  const backendTasks = await apiFetch('/tasks/');
+
+  if (!backendTasks.length) {
+    toast('No Django tasks available. Create a task first.');
+    return;
+  }
+
+  openModal('New Progress Report', [
+    {
+      k: 'task',
+      label: 'Task',
+      type: 'select',
+      options: backendTasks.map(t => ({
+        value: t.id,
+        label: t.name || t.task_name || `Task #${t.id}`
+      })),
+      req: true
+    },
+    {
+      k: 'date',
+      label: 'Report Date',
+      type: 'date',
+      req: true
+    },
+    {
+      k: 'work_done',
+      label: 'Work Done',
+      type: 'textarea',
+      req: true
+    },
+    {
+      k: 'progress_percentage',
+      label: 'Progress (%)',
+      type: 'number',
+      req: true
+    },
+    {
+      k: 'workers_present',
+      label: 'Workers Present',
+      type: 'number',
+      req: true
+    },
+    {
+      k: 'weather',
+      label: 'Weather',
+      type: 'select',
+      options: [
+        'SUNNY',
+        'CLOUDY',
+        'RAINY'
+      ],
+      req: true
+    },
+    {
+      k: 'remarks',
+      label: 'Remarks',
+      type: 'textarea'
+    }
+  ], async data => {
+
+    try {
+      console.log('CREATING DJANGO DPR:', data);
+
+      const response = await fetch(`${API_BASE}/dpr/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({
+          task: Number(data.task),
+          report_date: data.date,
+          work_done: data.work_done,
+          progress_percentage: Number(data.progress_percentage),
+          workers_present: Number(data.workers_present),
+          weather: data.weather,
+          remarks: data.remarks || ''
+        })
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`CREATE DPR ${response.status}: ${text}`);
+      }
+
+      const newDPR = await response.json();
+
+      console.log('DJANGO DPR CREATED:', newDPR);
+
+      toast('Daily Progress Report created in Django');
+
+      showView('progress');
+
+    } catch (error) {
+      console.error('DJANGO DPR CREATE ERROR:', error);
+      toast('Failed to create progress report');
+    }
   });
 }
 
@@ -1382,7 +1812,12 @@ function openModal(title, fields, onSubmit){
           <label>${f.label}${f.req?' *':''}</label>
           ${f.type==='select' ? `<select name="${f.k}" ${f.req?'required':''}>
               <option value="">Select…</option>
-              ${(f.options||[]).map(o=>`<option value="${o}">${o}</option>`).join('')}
+              ${(f.options||[]).map(o => {
+  if (typeof o === 'object') {
+    return `<option value="${o.value}">${o.label}</option>`;
+  }
+  return `<option value="${o}">${o}</option>`;
+}).join('')}
             </select>`
           : f.type==='textarea' ? `<textarea name="${f.k}" ${f.req?'required':''}></textarea>`
           : `<input type="${f.type}" name="${f.k}" ${f.req?'required':''}>`}
