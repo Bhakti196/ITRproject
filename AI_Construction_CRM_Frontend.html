@@ -727,7 +727,23 @@ async function getBackendPayments() {
     return [];
   }
 }
+async function createBackendDPR(dprData) {
+  const response = await fetch(`${API_BASE}/dpr/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify(dprData)
+  });
 
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`CREATE DPR ${response.status}: ${text}`);
+  }
+
+  return await response.json();
+}
 async function getBackendSites() {
   try {
     const sites = await apiFetch('/sites/');
@@ -736,6 +752,90 @@ async function getBackendSites() {
   } catch (error) {
     console.error('DJANGO SITES ERROR:', error);
     return [];
+  }
+}
+async function getBackendTasks() {
+  try {
+    const tasks = await apiFetch('/tasks/');
+    console.log('DJANGO TASKS:', tasks);
+    return tasks;
+  } catch (error) {
+    console.error('DJANGO TASKS ERROR:', error);
+    return [];
+  }
+}
+
+async function createBackendTask(taskData) {
+  const response = await fetch(`${API_BASE}/tasks/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify(taskData)
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`CREATE TASK ${response.status}: ${text}`);
+  }
+
+  return await response.json();
+}
+async function getBackendClients() {
+  try {
+    const clients = await apiFetch('/clients/');
+    console.log('DJANGO CLIENTS:', clients);
+    return clients;
+  } catch (error) {
+    console.error('DJANGO CLIENTS ERROR:', error);
+    return [];
+  }
+}
+
+async function createBackendClient(clientData) {
+  const response = await fetch(`${API_BASE}/clients/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify(clientData)
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`CREATE CLIENT ${response.status}: ${text}`);
+  }
+
+  return await response.json();
+}
+async function archiveBackendClient(id) {
+  if (!confirm('Archive this client?')) return;
+
+  try {
+    await deleteBackendClient(id);
+
+    toast('Client archived');
+
+    showView('clients');
+
+  } catch (error) {
+    console.error('ARCHIVE CLIENT ERROR:', error);
+    toast('Failed to archive client');
+  }
+}
+async function deleteBackendClient(id) {
+  try {
+    await apiFetch(`/clients/${id}/`, {
+      method: 'DELETE'
+    });
+
+    console.log('DJANGO CLIENT DELETED:', id);
+
+  } catch (error) {
+    console.error('DJANGO CLIENT DELETE ERROR:', error);
+    throw error;
   }
 }
 async function createBackendMaterial(materialData) {
@@ -851,71 +951,266 @@ function toast(msg){
 ======================================================= */
 
 const AI = {
-  completion(p){
+
+  completion(p) {
     const elapsed = daysBetween(p.start, todayISO());
     const totalPlanned = daysBetween(p.start, p.target);
-    const rate = p.progress / Math.max(elapsed,1); // % per day
-    const daysNeeded = rate > 0 ? Math.round((100 - p.progress) / rate) : 999;
-    const projected = new Date(Date.now() + daysNeeded*86400000);
-    const delayDays = daysBetween(p.target, projected.toISOString().slice(0,10));
-    return {projected, delayDays, totalPlanned, elapsed};
+    const rate = p.progress / Math.max(elapsed, 1);
+
+    const daysNeeded =
+      rate > 0
+        ? Math.round((100 - p.progress) / rate)
+        : 999;
+
+    const projected =
+      new Date(Date.now() + daysNeeded * 86400000);
+
+    const delayDays =
+      daysBetween(
+        p.target,
+        projected.toISOString().slice(0, 10)
+      );
+
+    return {
+      projected,
+      delayDays,
+      totalPlanned,
+      elapsed
+    };
   },
-  costOverrun(p){
+
+  costOverrun(p) {
     const spendRatio = p.spend / p.budget;
     const progressRatio = p.progress / 100;
-    const drift = progressRatio > 0 ? (spendRatio - progressRatio) / progressRatio : 0;
-    const projectedFinalCost = p.budget * (1 + Math.max(drift,0));
-    return {spendRatio, progressRatio, drift, projectedFinalCost};
+
+    const drift =
+      progressRatio > 0
+        ? (spendRatio - progressRatio) / progressRatio
+        : 0;
+
+    const projectedFinalCost =
+      p.budget * (1 + Math.max(drift, 0));
+
+    return {
+      spendRatio,
+      progressRatio,
+      drift,
+      projectedFinalCost
+    };
   },
-  riskLevel(p){
+
+  riskLevel(p) {
     const c = AI.completion(p);
     const co = AI.costOverrun(p);
-    if(c.delayDays > 20 || co.drift > 0.18) return 'high';
-    if(c.delayDays > 5 || co.drift > 0.07) return 'med';
+
+    if (c.delayDays > 20 || co.drift > 0.18) {
+      return 'high';
+    }
+
+    if (c.delayDays > 5 || co.drift > 0.07) {
+      return 'med';
+    }
+
     return 'low';
   },
-  materialAlerts(){
-    return state.materials.filter(m => m.qty <= m.threshold);
+
+  materialAlerts() {
+    return state.materials.filter(
+      m => m.qty <= m.threshold
+    );
   },
-  labourForecast(site){
-    const l = state.labour.filter(x=>x.site===site);
-    const avgAtt = l.length ? l.reduce((s,x)=>s+x.attendance/x.days,0)/l.length : 0;
+
+  labourForecast(site) {
+    const l =
+      state.labour.filter(
+        x => x.site === site
+      );
+
+    const avgAtt =
+      l.length
+        ? l.reduce(
+            (s, x) => s + x.attendance / x.days,
+            0
+          ) / l.length
+        : 0;
+
     const shortfall = avgAtt < 0.85;
-    return {count: l.length, avgAtt, shortfall};
+
+    return {
+      count: l.length,
+      avgAtt,
+      shortfall
+    };
   },
-  safetyRisk(site){
-    const logs = state.progress.filter(x=>x.site===site);
-    const keywords = ['unsafe','hazard','accident','fall','unguarded','loose','seepage','near-miss','injur'];
-    const flagged = logs.filter(l => keywords.some(k => l.issues.toLowerCase().includes(k)));
-    return {flagged, level: flagged.length >= 2 ? 'high' : flagged.length === 1 ? 'med' : 'low'};
+
+  safetyRisk(site) {
+    const logs =
+      state.progress.filter(
+        x => x.site === site
+      );
+
+    const keywords = [
+      'unsafe',
+      'hazard',
+      'accident',
+      'fall',
+      'unguarded',
+      'loose',
+      'seepage',
+      'near-miss',
+      'injur'
+    ];
+
+    const flagged =
+      logs.filter(l =>
+        keywords.some(k =>
+          l.issues.toLowerCase().includes(k)
+        )
+      );
+
+    return {
+      flagged,
+      level:
+        flagged.length >= 2
+          ? 'high'
+          : flagged.length === 1
+            ? 'med'
+            : 'low'
+    };
   },
-  generateReport(site){
-    const logs = state.progress.filter(x=>x.site===site).sort((a,b)=>new Date(b.date)-new Date(a.date));
-    if(!logs.length) return 'No progress data available for this site yet.';
+
+  generateReportFromDPR(projectName, dprLogs) {
+
+    if (!dprLogs.length) {
+      return 'No progress data available for this project yet.';
+    }
+
+    const logs = dprLogs
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(b.report_date) -
+          new Date(a.report_date)
+      );
+
     const latest = logs[0];
-    const safety = AI.safetyRisk(site);
-    let out = `As of ${fmtDate(latest.date)}, ${site} reports: ${latest.activity}. `;
-    out += safety.flagged.length ? `Safety attention required — ${safety.flagged.length} recent entr${safety.flagged.length>1?'ies':'y'} flagged site conditions for review. ` : `No active safety flags in recent logs. `;
-    out += logs.length > 1 ? `Compared to the prior entry on ${fmtDate(logs[1].date)}, work has progressed as planned.` : `This is the first logged entry for the site.`;
+
+    const previous =
+      logs.length > 1
+        ? logs[1]
+        : null;
+
+    let out =
+      `As of ${fmtDate(latest.report_date)}, ` +
+      `${projectName} reports: ` +
+      `${latest.work_done || 'No activity description available.'} `;
+
+    out +=
+      `Current reported progress is ` +
+      `${latest.progress_percentage ?? 0}% ` +
+      `with ${latest.workers_present ?? 0} workers present. `;
+
+    if (latest.weather) {
+      out += `Weather was ${latest.weather}. `;
+    }
+
+    const remarks = latest.remarks || '';
+
+    const safetyKeywords = [
+      'unsafe',
+      'hazard',
+      'accident',
+      'fall',
+      'unguarded',
+      'loose',
+      'seepage',
+      'near-miss',
+      'injur'
+    ];
+
+    const safetyFlagged =
+      safetyKeywords.some(k =>
+        remarks.toLowerCase().includes(k)
+      );
+
+    if (safetyFlagged) {
+      out +=
+        'Safety attention is required based on the latest site remarks. ';
+    } else {
+      out +=
+        'No active safety issue was identified in the latest remarks. ';
+    }
+
+    if (previous) {
+
+      const change =
+        (latest.progress_percentage ?? 0) -
+        (previous.progress_percentage ?? 0);
+
+      if (change > 0) {
+
+        out +=
+          `Progress increased by ${change} percentage points ` +
+          `from the previous DPR.`;
+
+      } else if (change < 0) {
+
+        out +=
+          `Reported progress is ${Math.abs(change)} percentage points ` +
+          `below the previous DPR.`;
+
+      } else {
+
+        out +=
+          'Reported progress is unchanged from the previous DPR.';
+      }
+
+    } else {
+
+      out +=
+        'This is the first available DPR for this project.';
+    }
+
     return out;
   }
-};
 
+};
 /* =======================================================
    NAV
 ======================================================= */
-document.querySelectorAll('.nav-item').forEach(btn=>{
-  btn.addEventListener('click', ()=> showView(btn.dataset.view));
+document.querySelectorAll('.nav-item').forEach(btn => 
+{
+  btn.addEventListener('click', () => {
+    showView(btn.dataset.view);
+  });
 });
-document.getElementById('btn-refresh-ai').addEventListener('click', ()=>{
+
+document.getElementById('btn-refresh-ai').addEventListener('click', () => {
   toast('AI predictions recalculated');
   render();
 });
-document.getElementById('btn-quick-add').addEventListener('click', ()=>{
-  const map = {clients:openClientForm, projects:openProjectForm, sites:openSiteForm, materials:openMaterialForm,
-    labour:openLabourForm, contractors:openContractorForm, equipment:openEquipmentForm, billing:openInvoiceForm,
-    payments:openPaymentForm, progress:openProgressForm};
-  (map[currentView] || openProjectForm)();
+
+document.getElementById('btn-quick-add').addEventListener('click', () => {
+
+  const map = {
+    clients: openClientForm,
+    projects: openProjectForm,
+    sites: openSiteForm,
+    materials: openMaterialForm,
+    labour: openLabourForm,
+    equipment: openEquipmentForm,
+    billing: openBillingForm,
+    payments: openPaymentForm
+  };
+
+  const currentView = state.view;
+
+  if (map[currentView]) {
+    map[currentView]();
+  } else 
+  {
+    toast('Quick add is not available for this section');
+  }
 });
 
 function showView(view){
@@ -1260,36 +1555,78 @@ const sr = AI.safetyRisk(siteName);
 /* =======================================================
    CLIENTS
 ======================================================= */
-function renderClients(){
-  const s = sheet('Relationships', 'Client Records', `${state.clients.length} clients`);
+async function renderClients() {
+  const backendClients = await getBackendClients();
+
+  const s = sheet(
+    'Relationships',
+    'Client Records',
+    `${backendClients.length} clients`
+  );
+
   const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th>Client</th><th>Primary Contact</th><th>Phone</th><th>Linked Projects</th><th>Last Contact</th><th></th></tr></thead>
-    <tbody>${state.clients.map(c=>`
+
+  tbl.innerHTML = `
+    <thead>
       <tr>
-        <td><b>${c.name}</b><div class="muted" style="font-size:11px;">${c.address}</div></td>
-        <td>${c.contact}<div class="muted" style="font-size:11px;">${c.email}</div></td>
-        <td class="cell-mono">${c.phone}</td>
-        <td><span class="badge badge-blue">${c.projects} project(s)</span></td>
-        <td class="cell-mono">${fmtDate(c.lastContact)}</td>
-        <td><button class="btn btn-sm btn-ghost-danger" onclick="removeItem('clients','${c.id}')">Archive</button></td>
-      </tr>`).join('')}</tbody>`;
+        <th>Client</th>
+        <th>Company</th>
+        <th>Email</th>
+        <th>Phone</th>
+        <th>Address</th>
+        <th></th>
+      </tr>
+    </thead>
+
+    <tbody>
+      ${
+        backendClients.length
+          ? backendClients.map(c => `
+              <tr>
+                <td>
+                  <b>${c.client_name}</b>
+                </td>
+
+                <td>
+                  ${c.company_name || '—'}
+                </td>
+
+                <td>
+                  ${c.email || '—'}
+                </td>
+
+                <td class="cell-mono">
+                  ${c.phone || '—'}
+                </td>
+
+                <td>
+                  ${c.address || '—'}
+                </td>
+
+                <td>
+                  <button
+                    class="btn btn-sm btn-ghost-danger"
+                    onclick="archiveBackendClient(${c.id})"
+                  >
+                    Archive
+                  </button>
+                </td>
+              </tr>
+            `).join('')
+          : `
+              <tr>
+                <td colspan="6" class="muted">
+                  No clients found in Django.
+                </td>
+              </tr>
+            `
+      }
+    </tbody>
+  `;
+
   s.appendChild(tbl);
-  if(!state.clients.length) s.appendChild(emptyEl('No clients yet — add your first client record.'));
   els.content.appendChild(s);
 }
-function openClientForm(){
-  openModal('New Client', [
-    {k:'name', label:'Client / Company Name', type:'text', req:true},
-    {k:'contact', label:'Primary Contact', type:'text', req:true},
-    {k:'phone', label:'Phone', type:'text'},
-    {k:'email', label:'Email', type:'text'},
-    {k:'address', label:'Address', type:'text'},
-  ], data=>{
-    state.clients.unshift({id:uid(), name:data.name, contact:data.contact, phone:data.phone||'—', email:data.email||'—', address:data.address||'—', projects:0, lastContact:todayISO()});
-    toast('Client added'); showView('clients');
-  });
-}
-
 /* =======================================================
    CONTRACTORS
 ======================================================= */
@@ -1729,7 +2066,7 @@ async function renderProgress() {
   els.content.appendChild(s);
 
 
-  /* ================================
+    /* ================================
      AI PROGRESS REPORTS
   ================================= */
 
@@ -1742,31 +2079,46 @@ async function renderProgress() {
   const repGrid = document.createElement('div');
   repGrid.className = 'grid grid-3';
 
-  state.sites.forEach(site => {
+  const projectGroups = {};
 
-    const div = document.createElement('div');
+  backendDPR.forEach(log => {
+    const projectName =
+      log.project_name || 'Unknown Project';
 
-    div.className = 'ai-card risk-low';
+    if (!projectGroups[projectName]) {
+      projectGroups[projectName] = [];
+    }
 
-    div.innerHTML = `
-      <div class="ai-card-head">
-        <span class="ai-tag">Report</span>
-      </div>
-
-      <div class="ai-card-title">
-        ${site.name}
-      </div>
-
-      <div
-        class="ai-card-body"
-        style="margin-top:6px;"
-      >
-        ${AI.generateReport(site.name)}
-      </div>
-    `;
-
-    repGrid.appendChild(div);
+    projectGroups[projectName].push(log);
   });
+
+  Object.entries(projectGroups).forEach(
+    ([projectName, logs]) => {
+
+      const div = document.createElement('div');
+
+      div.className = 'ai-card risk-low';
+
+      div.innerHTML = `
+        <div class="ai-card-head">
+          <span class="ai-tag">AI DPR REPORT</span>
+        </div>
+
+        <div class="ai-card-title">
+          ${projectName}
+        </div>
+
+        <div
+          class="ai-card-body"
+          style="margin-top:6px;"
+        >
+          ${AI.generateReportFromDPR(projectName, logs)}
+        </div>
+      `;
+
+      repGrid.appendChild(div);
+    }
+  );
 
   repSheet.appendChild(repGrid);
   els.content.appendChild(repSheet);

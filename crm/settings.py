@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "payments",
     'ai_engine',
     'corsheaders',
+    'clients',
 
 ]
 
