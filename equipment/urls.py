@@ -1,6 +1,7 @@
 from django.urls import path
-from .views import EquipmentListCreateView
+from .views import equipment, equipment_detail
 
 urlpatterns = [
-    path("", EquipmentListCreateView.as_view(), name="equipment"),
+    path("", equipment, name="equipment"),
+    path("<int:pk>/", equipment_detail, name="equipment_detail"),
 ]
