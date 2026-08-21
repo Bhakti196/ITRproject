@@ -2367,7 +2367,7 @@ async function openBillingForm() {
         type: 'select',
         options: contractors.map(c => ({
           value: c.id,
-          label: c.contractor_name || c.name || `Contractor #${c.id}`
+          label: c.contractor_name
         })),
         req: true
       },
@@ -2420,36 +2420,25 @@ async function openBillingForm() {
         const newBilling = await createBackendBilling({
 
           project: Number(data.project),
-
           contractor: Number(data.contractor),
-
           invoice_number: data.invoice_number,
-
           invoice_date: data.invoice_date,
-
-          amount: data.amount,
-
+          amount: Number(data.amount),
           status: data.status,
-
           description: data.description || ''
 
         });
 
-        console.log(
-          'DJANGO BILLING CREATED:',
-          newBilling
-        );
+        console.log('DJANGO BILLING CREATED:', newBilling);
 
         toast('Billing record created in Django');
 
-        showView('billing');
+        // Refresh directly from Django
+        await renderBilling();
 
       } catch (error) {
 
-        console.error(
-          'DJANGO BILLING CREATE ERROR:',
-          error
-        );
+        console.error('DJANGO BILLING CREATE ERROR:', error);
 
         toast('Failed to create billing record');
 
@@ -2459,10 +2448,7 @@ async function openBillingForm() {
 
   } catch (error) {
 
-    console.error(
-      'FAILED TO LOAD BILLING OPTIONS:',
-      error
-    );
+    console.error('FAILED TO LOAD BILLING OPTIONS:', error);
 
     toast('Could not load projects or contractors');
 
@@ -3814,6 +3800,8 @@ async function openEquipmentForm() {
    BILLING
 ======================================================= */
 async function renderBilling() {
+
+  els.content.innerHTML = '';
 
   const [backendBilling, projects, contractors] = await Promise.all([
     getBackendBilling(),
