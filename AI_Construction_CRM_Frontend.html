@@ -27,6 +27,63 @@
     --radius:2px;
   }
   *{box-sizing:border-box; margin:0; padding:0;}
+  #loginScreen {
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  background: #0f1419;
+  padding: 24px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 420px;
+  background: #182027;
+  border: 1px solid #2b3943;
+  border-radius: 12px;
+  padding: 36px;
+  box-sizing: border-box;
+}
+
+.login-brand {
+  margin-bottom: 30px;
+}
+
+.login-card h1 {
+  margin: 0 0 8px;
+}
+
+.login-card p {
+  margin: 0 0 28px;
+  opacity: .7;
+}
+
+.login-card label {
+  display: block;
+  margin: 16px 0 7px;
+}
+
+.login-card input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid #394852;
+  background: #10171c;
+  color: inherit;
+}
+
+.login-card button {
+  width: 100%;
+  margin-top: 24px;
+}
+
+#loginError {
+  margin-top: 16px;
+  padding: 10px;
+  border-radius: 6px;
+  background: rgba(220, 70, 70, .12);
+}
   html,body{height:100%;}
   body{
     font-family:'Inter', sans-serif;
@@ -273,7 +330,13 @@
     border:1px solid rgba(255,106,61,0.4);
     padding:2px 6px; border-radius:2px;
   }
-  .ai-card-title{font-family:'Space Grotesk',sans-serif; font-size:13px; font-weight:600;}
+  .ai-card-title{
+  font-family:'Space Grotesk',sans-serif;
+  font-size:13px;
+  font-weight:600;
+  color:#ffffff;
+  margin-bottom:8px;
+}
   .ai-card-body{font-size:12px; color:#cdd8e0; line-height:1.5;}
   .ai-card-body b{color:#fff;}
 
@@ -398,6 +461,41 @@
 </style>
 </head>
 <body>
+<div id="loginScreen" style="display:none;">
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="brand-title">Site Intelligence</div>
+      <div class="brand-sub">AI Construction CRM</div>
+    </div>
+
+    <h1>Welcome back</h1>
+    <p>Sign in to access your construction dashboard.</p>
+
+    <form id="loginForm">
+      <label>Username</label>
+      <input
+        type="text"
+        id="loginUsername"
+        placeholder="Enter username"
+        required
+      >
+
+      <label>Password</label>
+      <input
+        type="password"
+        id="loginPassword"
+        placeholder="Enter password"
+        required
+      >
+
+      <div id="loginError" style="display:none;"></div>
+
+      <button type="submit" class="btn primary">
+        Login
+      </button>
+    </form>
+  </div>
+</div>
 
 <div id="app">
   <aside id="sidebar">
@@ -499,6 +597,9 @@
 <div class="toast" id="toast"></div>
 
 <script>
+document.querySelectorAll('#sidebar .count').forEach(el => {
+  el.style.display = 'none';
+});
 /* =======================================================
    STATE
 ======================================================= */
@@ -520,7 +621,9 @@ async function loginBackend(username, password) {
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(`LOGIN ${response.status}: ${JSON.stringify(data)}`);
+    throw new Error(
+      `LOGIN ${response.status}: ${JSON.stringify(data)}`
+    );
   }
 
   accessToken = data.access;
@@ -533,18 +636,98 @@ async function loginBackend(username, password) {
 
   console.log('LOGIN SUCCESS');
 }
-async function apiFetch(endpoint) {
-  const token = localStorage.getItem('access_token') || '';
+function checkLogin() {
+  const token = localStorage.getItem('access_token');
+
+  if (token) {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('app').style.display = '';
+
+    renderDashboard();
+  } else {
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('app').style.display = 'none';
+  }
+}
+
+checkLogin();
+
+async function refreshAccessToken() {
+  const refreshToken = localStorage.getItem('refresh_token');
+
+  if (!refreshToken) {
+    throw new Error('NO_REFRESH_TOKEN');
+  }
+
+  const response = await fetch(`${API_BASE}/refresh/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      refresh: refreshToken
+    })
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(`REFRESH ${response.status}: ${JSON.stringify(data)}`);
+  }
+
+  localStorage.setItem('access_token', data.access);
+
+  accessToken = data.access;
+
+  console.log('ACCESS TOKEN REFRESHED');
+
+  return data.access;
+}
+
+
+async function apiFetch(endpoint, options = {}) {
+  let token = localStorage.getItem('access_token') || '';
 
   console.log('USING TOKEN:', token ? 'YES' : 'NO');
 
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    method: 'GET',
+  let response = await fetch(`${API_BASE}${endpoint}`, {
+    ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...(options.headers || {}),
       'Authorization': `Bearer ${token}`
     }
   });
+
+  // Access token expired
+  if (response.status === 401) {
+    console.log('ACCESS TOKEN EXPIRED — TRYING REFRESH');
+
+    try {
+      token = await refreshAccessToken();
+
+      // Retry the original request with the new token
+      response = await fetch(`${API_BASE}${endpoint}`, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(options.headers || {}),
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+    } catch (refreshError) {
+      console.error('REFRESH FAILED:', refreshError);
+
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+
+      document.getElementById('loginScreen').style.display = 'flex';
+      document.getElementById('app').style.display = 'none';
+
+      throw new Error('SESSION_EXPIRED');
+    }
+  }
 
   if (!response.ok) {
     const text = await response.text();
@@ -553,6 +736,38 @@ async function apiFetch(endpoint) {
 
   return await response.json();
 }
+document.getElementById('loginForm').addEventListener('submit', async function (e) {
+  e.preventDefault();
+
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errorBox = document.getElementById('loginError');
+
+  errorBox.style.display = 'none';
+
+  try {
+    await loginBackend(username, password);
+
+    // Hide login
+    document.getElementById('loginScreen').style.display = 'none';
+
+    // Show CRM
+    document.getElementById('app').style.display = '';
+
+    console.log('LOGIN PAGE SUCCESS');
+
+    // Load dashboard
+    if (typeof renderDashboard === 'function') {
+      await renderDashboard();
+    }
+
+  } catch (error) {
+    console.error('LOGIN ERROR:', error);
+
+    errorBox.textContent = 'Invalid username or password.';
+    errorBox.style.display = 'block';
+  }
+});
 async function createBackendProject(projectData) {
   const response = await fetch(`${API_BASE}/projects/`, {
     method: 'POST',
@@ -1475,14 +1690,16 @@ document.getElementById('btn-quick-add').addEventListener('click', () => {
   }
 
   const map = {
-    clients: openClientForm,
-    projects: openProjectForm,
-    sites: openSiteForm,
-    materials: openMaterialForm,
-    labour: openLabourForm,
-    equipment: openEquipmentForm,
-    payments: openPaymentForm
-  };
+  clients: openClientForm,
+  contractors: openContractorForm,
+  projects: openProjectForm,
+  sites: openSiteForm,
+  progress: openDPRForm,
+  materials: openMaterialForm,
+  labour: openLabourForm,
+  equipment: openEquipmentForm,
+  payments: openPaymentForm
+};
 
   const fn = map[view];
 
@@ -1564,16 +1781,17 @@ async function loadProjectRisk(projectId, card) {
    DASHBOARD
 ======================================================= */
 async function renderDashboard() {
-  const backendProjects = await getBackendProjects();
-  const backendSites = await getBackendSites();
-  const backendBilling = await getBackendBilling();
+  if (!localStorage.getItem('access_token')) {
+    console.log('DASHBOARD BLOCKED: No login token');
+    return;
+  }
 
-  // Temporary values until budget/spend are available from Django.
-  // Keep these at 0 rather than mixing old mock state into the
-  // live Django dashboard.
-  const totalBudget = 0;
-  const totalSpend = 0;
+ const backendProjects = await getBackendProjects();
+const backendSites = await getBackendSites();
+const backendBilling = await getBackendBilling();
+const backendPayments = await getBackendPayments();
 
+  
   const totalSites = backendSites.length;
 
   // Billing is still being integrated separately.
@@ -1590,38 +1808,43 @@ const overdueInvoices = backendBilling
   kpiWrap.className = 'grid grid-4';
 
   kpiWrap.innerHTML = `
-    <div class="kpi">
-      <div class="kpi-label">Active Projects</div>
-      <div class="kpi-value">${backendProjects.length}</div>
-      <div class="kpi-delta">${totalSites} sites in Django</div>
-    </div>
-
-    <div class="kpi">
-      <div class="kpi-label">Portfolio Budget</div>
-      <div class="kpi-value">${fmtMoney(totalBudget)}</div>
-      <div class="kpi-delta">${fmtMoney(totalSpend)} spent</div>
-    </div>
-
-    <div class="kpi">
-      <div class="kpi-label">Spend Utilisation</div>
-      <div class="kpi-value">
-        ${totalBudget > 0
-          ? Math.round(totalSpend / totalBudget * 100)
-          : 0}%
-      </div>
-      <div class="kpi-delta">
-        of total budget
-      </div>
-    </div>
-
-    <div class="kpi">
-  <div class="kpi-label">Outstanding Receivables</div>
-  <div class="kpi-value">${fmtMoney(dueInvoices)}</div>
-  <div class="kpi-delta down">
-    ${overdueInvoices} outstanding invoice(s)
+  <div class="kpi">
+    <div class="kpi-label">Active Projects</div>
+    <div class="kpi-value">${backendProjects.length}</div>
+    <div class="kpi-delta">${totalSites} sites in Django</div>
   </div>
-</div>
-  `;
+
+  <div class="kpi">
+    <div class="kpi-label">Total Payments</div>
+    <div class="kpi-value">
+      ${fmtMoney(
+        backendPayments.reduce(
+          (sum, p) => sum + Number(p.amount || p.payment_amount || 0),
+          0
+        )
+      )}
+    </div>
+    <div class="kpi-delta">
+      ${backendPayments.length} payment record(s)
+    </div>
+  </div>
+
+  <div class="kpi">
+    <div class="kpi-label">Billing Records</div>
+    <div class="kpi-value">${backendBilling.length}</div>
+    <div class="kpi-delta">
+      ${overdueInvoices} outstanding invoice(s)
+    </div>
+  </div>
+
+  <div class="kpi">
+    <div class="kpi-label">Outstanding Receivables</div>
+    <div class="kpi-value">${fmtMoney(dueInvoices)}</div>
+    <div class="kpi-delta down">
+      ${overdueInvoices} outstanding invoice(s)
+    </div>
+  </div>
+`;
 
   els.content.appendChild(kpiWrap);
 
@@ -1693,7 +1916,7 @@ const overdueInvoices = backendBilling
   const aiGrid2 = document.createElement('div');
   aiGrid2.className = 'grid grid-3 section-gap';
 
-  const matAlerts = AI.materialAlerts();
+  const matAlerts = [];
 
   aiGrid2.innerHTML += `
     <div class="ai-card ${matAlerts.length ? 'risk-med' : 'risk-low'}">
@@ -1736,9 +1959,8 @@ const sr = AI.safetyRisk(siteName);
         </div>
 
         <div class="ai-card-title">${siteName}</div>
-        </div>
 
-        <div class="ai-card-body" style="margin-top:6px;">
+<div class="ai-card-body" style="margin-top:6px;">
           Avg. attendance:
           <b>${Math.round(lf.avgAtt * 100)}%</b>
 
@@ -2454,6 +2676,136 @@ async function openBillingForm() {
 
   }
 }
+async function openDPRForm() {
+
+  try {
+
+    const backendProjects = await getBackendProjects();
+    const backendTasks = await apiFetch('/tasks/');
+
+    openModal('New Daily Progress Report', [
+
+      {
+        k: 'project',
+        label: 'Project',
+        type: 'select',
+        options: backendProjects.map(project => ({
+          value: project.id,
+          label: project.project_name || `Project #${project.id}`
+        })),
+        req: true
+      },
+
+      {
+        k: 'task',
+        label: 'Task',
+        type: 'select',
+        options: backendTasks.map(task => ({
+          value: task.id,
+          label: task.task_name || `Task #${task.id}`
+        })),
+        req: true
+      },
+
+      {
+        k: 'date',
+        label: 'Report Date',
+        type: 'date',
+        req: true
+      },
+
+      {
+        k: 'progress_percentage',
+        label: 'Progress (%)',
+        type: 'number',
+        req: true
+      },
+
+      {
+        k: 'workers_present',
+        label: 'Workers Present',
+        type: 'number',
+        req: true
+      },
+
+      {
+        k: 'weather',
+        label: 'Weather',
+        type: 'text',
+        req: true
+      },
+
+      {
+        k: 'work_done',
+        label: 'Work Done',
+        type: 'text',
+        req: true
+      },
+
+      {
+        k: 'remarks',
+        label: 'Remarks',
+        type: 'text',
+        req: false
+      }
+
+    ], async data => {
+
+      console.log('DPR FORM DATA:', data);
+
+const payload = {
+  project_id: Number(data.project),
+  task: Number(data.task),
+  report_date: data.date,
+  progress_percentage: Number(data.progress_percentage),
+  workers_present: Number(data.workers_present),
+  weather: data.weather,
+  work_done: data.work_done,
+  remarks: data.remarks || ''
+};
+
+console.log('DPR PAYLOAD:', payload);
+
+try {
+  const response = await fetch(`${API_BASE}/dpr/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const result = await response.json();
+
+  console.log('DPR CREATE RESPONSE:', response.status, result);
+
+  if (!response.ok) {
+    throw new Error(
+      `CREATE DPR ${response.status}: ${JSON.stringify(result)}`
+    );
+  }
+
+ toast('Daily progress report created successfully');
+
+document.getElementById('modal-backdrop').style.display = 'none';
+
+await render();
+
+} catch (error) {
+  console.error('DPR CREATE ERROR:', error);
+  toast('Failed to create daily progress report');
+}
+
+    });
+
+  } catch (error) {
+
+    console.error('DPR FORM ERROR:', error);
+    toast('Could not load projects or tasks');
+
+  }
+}
 async function openProjectForm() {
   try {
     const backendSites = await getBackendSites();
@@ -2982,13 +3334,129 @@ async function renderProgress() {
   repSheet.appendChild(repGrid);
   els.content.appendChild(repSheet);
 }
+async function openTaskForm() {
+  try {
+    const backendProjects = await getBackendProjects();
+
+    if (!backendProjects.length) {
+      toast('No Django projects available. Create a project first.');
+      return;
+    }
+
+    openModal('New Task', [
+      {
+        k: 'project',
+        label: 'Project',
+        type: 'select',
+        options: backendProjects.map(project => ({
+          value: project.id,
+          label: project.project_name
+        })),
+        req: true
+      },
+      {
+        k: 'task_name',
+        label: 'Task Name',
+        type: 'text',
+        req: true
+      },
+      {
+        k: 'description',
+        label: 'Description',
+        type: 'text',
+        req: false
+      },
+      {
+        k: 'status',
+        label: 'Status',
+        type: 'select',
+        options: [
+          {
+            value: 'TODO',
+            label: 'To Do'
+          },
+          {
+            value: 'IN_PROGRESS',
+            label: 'In Progress'
+          },
+          {
+            value: 'DONE',
+            label: 'Done'
+          }
+        ],
+        req: true
+      },
+      {
+        k: 'priority',
+        label: 'Priority',
+        type: 'select',
+        options: [
+          {
+            value: 'LOW',
+            label: 'Low'
+          },
+          {
+            value: 'MEDIUM',
+            label: 'Medium'
+          },
+          {
+            value: 'HIGH',
+            label: 'High'
+          }
+        ],
+        req: true
+      },
+      {
+        k: 'due_date',
+        label: 'Due Date',
+        type: 'date',
+        req: true
+      }
+    ], async data => {
+
+      try {
+        console.log('CREATING DJANGO TASK:', data);
+
+        const newTask = await createBackendTask({
+          project: Number(data.project),
+          task_name: data.task_name,
+          description: data.description || '',
+          status: data.status,
+          priority: data.priority,
+          due_date: data.due_date
+        });
+
+        console.log('DJANGO TASK CREATED:', newTask);
+
+        toast('Task created successfully');
+
+        showView('progress');
+
+      } catch (error) {
+        console.error('DJANGO TASK CREATE ERROR:', error);
+        toast('Failed to create task');
+      }
+    });
+
+  } catch (error) {
+    console.error('FAILED TO LOAD PROJECTS FOR TASK:', error);
+    toast('Could not load projects');
+  }
+}
 async function openProgressForm() {
   const backendTasks = await apiFetch('/tasks/');
 
   if (!backendTasks.length) {
-    toast('No Django tasks available. Create a task first.');
-    return;
+  const createTask = confirm(
+    'No tasks available. Would you like to create a task first?'
+  );
+
+  if (createTask) {
+    await openTaskForm();
   }
+
+  return;
+}
 
   openModal('New Progress Report', [
     {
@@ -3088,20 +3556,15 @@ async function openProgressForm() {
 ======================================================= */
 async function renderMaterials() {
   try {
-
-    // Clear old content so we don't create duplicate tables
     els.content.innerHTML = '';
 
-    // Get fresh materials from Django
     const backendMaterials = await getBackendMaterials();
+    const backendProjects = await getBackendProjects();
 
-    // Get sites so we can display the site name
-    const backendSites = await getBackendSites();
-
-    const siteMap = Object.fromEntries(
-      backendSites.map(site => [
-        site.id,
-        site.site_name
+    const projectMap = Object.fromEntries(
+      backendProjects.map(project => [
+        project.id,
+        project.project_name
       ])
     );
 
@@ -3117,68 +3580,61 @@ async function renderMaterials() {
       <thead>
         <tr>
           <th>Material</th>
-          <th>Site</th>
+          <th>Project</th>
           <th>Quantity</th>
-          <th>Threshold</th>
-          <th>Rate</th>
+          <th>Minimum Stock</th>
+          <th>Unit</th>
           <th>Status</th>
           <th>Action</th>
         </tr>
       </thead>
 
       <tbody>
-
         ${
           backendMaterials.length
-
             ? backendMaterials.map(m => {
 
                 const qty = Number(m.quantity || 0);
-                const threshold = Number(m.reorder_level || 0);
-                const low = qty <= threshold;
+                const minimumStock = Number(m.minimum_stock || 0);
+                const low = qty <= minimumStock;
 
                 return `
                   <tr>
 
                     <td>
-                      <b>
-                        ${m.material_name || '—'}
-                      </b>
+                      <b>${m.material_name || '—'}</b>
                     </td>
 
                     <td class="muted">
                       ${
-                        siteMap[m.site]
-                        || `Site #${m.site || '—'}`
+                        projectMap[m.project]
+                        || `Project #${m.project || '—'}`
                       }
                     </td>
 
                     <td class="cell-mono">
                       ${qty}
-                      ${m.unit || ''}
                     </td>
 
                     <td class="cell-mono muted">
-                      ${threshold}
-                      ${m.unit || ''}
+                      ${minimumStock}
                     </td>
 
                     <td class="cell-mono">
-                      ${fmtMoney(Number(m.unit_price || 0))}
+                      ${m.unit || '—'}
                     </td>
 
                     <td>
                       ${
                         low
-                          ? '<span class="badge badge-red">Reorder</span>'
-                          : '<span class="badge badge-green">Adequate</span>'
+                          ? `<span class="status-badge danger">LOW STOCK</span>`
+                          : `<span class="status-badge success">ADEQUATE</span>`
                       }
                     </td>
 
                     <td>
                       <button
                         class="btn danger"
-                        style="color: black;"
                         onclick="deleteMaterialRecord(${m.id})"
                       >
                         Delete
@@ -3187,18 +3643,16 @@ async function renderMaterials() {
 
                   </tr>
                 `;
-
               }).join('')
 
             : `
-                <tr>
-                  <td colspan="7" class="muted">
-                    No materials found in Django.
-                  </td>
-                </tr>
-              `
+              <tr>
+                <td colspan="7" class="muted">
+                  No material records found in Django.
+                </td>
+              </tr>
+            `
         }
-
       </tbody>
     `;
 
@@ -3207,155 +3661,93 @@ async function renderMaterials() {
 
   } catch (error) {
 
-    console.error(
-      'RENDER MATERIALS ERROR:',
-      error
-    );
+    console.error('RENDER MATERIALS ERROR:', error);
 
-    toast(
-      'Failed to load materials'
-    );
+    toast('Failed to load materials');
   }
 }
 async function openMaterialForm() {
-
   try {
+    const backendProjects = await getBackendProjects();
 
-    // Load real Django sites
-    const backendSites = await getBackendSites();
-
-    if (!backendSites.length) {
-
-      toast(
-        'No Django sites available. Create a site first.'
-      );
-
+    if (!backendProjects.length) {
+      toast('No Django projects available. Create a project first.');
       return;
     }
 
-    openModal(
-      'New Material Item',
-
-      [
-        {
-          k: 'material_name',
-          label: 'Material',
-          type: 'text',
-          req: true
-        },
-
-        {
-          k: 'site',
-          label: 'Site',
-          type: 'select',
-
-          options: backendSites.map(site => ({
-            value: site.id,
-            label: `${site.site_name} — ${site.location}`
-          })),
-
-          req: true
-        },
-
-        {
-          k: 'unit',
-          label: 'Unit',
-          type: 'text',
-          req: true
-        },
-
-        {
-          k: 'quantity',
-          label: 'Current Quantity',
-          type: 'number',
-          req: true
-        },
-
-        {
-          k: 'reorder_level',
-          label: 'Reorder Threshold',
-          type: 'number',
-          req: true
-        },
-
-        {
-          k: 'unit_price',
-          label: 'Rate per Unit (₹)',
-          type: 'number',
-          req: true
-        }
-      ],
-
-      async data => {
-
-        try {
-
-          console.log(
-            'CREATING DJANGO MATERIAL:',
-            data
-          );
-
-          const newMaterial =
-            await createBackendMaterial({
-
-              material_name:
-                data.material_name,
-
-              site:
-                Number(data.site),
-
-              unit:
-                data.unit,
-
-              quantity:
-                Number(data.quantity),
-
-              reorder_level:
-                Number(data.reorder_level),
-
-              unit_price:
-                Number(data.unit_price)
-            });
-
-          console.log(
-            'DJANGO MATERIAL CREATED:',
-            newMaterial
-          );
-
-          toast(
-            'Material created successfully'
-          );
-
-          // Immediately reload from Django
-          await renderMaterials();
-
-        } catch (error) {
-
-          console.error(
-            'DJANGO MATERIAL CREATE ERROR:',
-            error
-          );
-
-          toast(
-            'Failed to create material'
-          );
-        }
+    openModal('New Material Item', [
+      {
+        k: 'material_name',
+        label: 'Material',
+        type: 'text',
+        req: true
+      },
+      {
+        k: 'project',
+        label: 'Project',
+        type: 'select',
+        options: backendProjects.map(project => ({
+          value: project.id,
+          label: project.project_name
+        })),
+        req: true
+      },
+      {
+        k: 'unit',
+        label: 'Unit',
+        type: 'select',
+        options: [
+          { value: 'KG', label: 'Kilogram' },
+          { value: 'TON', label: 'Ton' },
+          { value: 'BAG', label: 'Bag' },
+          { value: 'M3', label: 'Cubic Meter' },
+          { value: 'LITRE', label: 'Litre' },
+          { value: 'PIECE', label: 'Piece' }
+        ],
+        req: true
+      },
+      {
+        k: 'quantity',
+        label: 'Current Quantity',
+        type: 'number',
+        req: true
+      },
+      {
+        k: 'minimum_stock',
+        label: 'Minimum Stock',
+        type: 'number',
+        req: true
       }
-    );
+    ], async data => {
+
+      try {
+        console.log('CREATING DJANGO MATERIAL:', data);
+
+        const newMaterial = await createBackendMaterial({
+          project: Number(data.project),
+          material_name: data.material_name,
+          quantity: Number(data.quantity),
+          unit: data.unit,
+          minimum_stock: Number(data.minimum_stock)
+        });
+
+        console.log('DJANGO MATERIAL CREATED:', newMaterial);
+
+        toast('Material created successfully');
+
+        await renderMaterials();
+
+      } catch (error) {
+        console.error('DJANGO MATERIAL CREATE ERROR:', error);
+        toast('Failed to create material');
+      }
+    });
 
   } catch (error) {
-
-    console.error(
-      'FAILED TO LOAD MATERIAL SITES:',
-      error
-    );
-
-    toast(
-      'Could not load Django sites'
-    );
+    console.error('FAILED TO LOAD MATERIAL PROJECTS:', error);
+    toast('Could not load Django projects');
   }
 }
-
 /* =======================================================
    LABOUR
 ======================================================= */
@@ -3699,6 +4091,123 @@ async function renderEquipment() {
   } catch (error) {
     console.error('RENDER EQUIPMENT ERROR:', error);
     toast('Failed to load equipment');
+  }
+}
+async function openContractorForm() {
+  try {
+    const backendSites = await getBackendSites();
+
+    if (!backendSites.length) {
+      toast('No Django sites available. Create a site first.');
+      return;
+    }
+
+    openModal('New Contractor', [
+      {
+        k: 'contractor_name',
+        label: 'Contractor Name',
+        type: 'text',
+        req: true
+      },
+      {
+        k: 'company_name',
+        label: 'Company Name',
+        type: 'text',
+        req: true
+      },
+      {
+        k: 'phone',
+        label: 'Phone',
+        type: 'text',
+        req: true
+      },
+      {
+        k: 'email',
+        label: 'Email',
+        type: 'email',
+       
+        req: false
+      },
+      {
+        k: 'contract_value',
+        label: 'Contract Value (₹)',
+        type: 'number',
+        req: true
+      },
+      {
+        k: 'site',
+        label: 'Site',
+        type: 'select',
+        options: backendSites.map(site => ({
+          value: site.id,
+          label: site.site_name || `Site #${site.id}`
+        })),
+        req: true
+      },
+      {
+        k: 'start_date',
+        label: 'Start Date',
+        type: 'date',
+        req: true
+      },
+      {
+        k: 'end_date',
+        label: 'End Date',
+        type: 'date',
+        req: false
+      }
+    ], async data => {
+
+      try {
+        const payload = {
+          contractor_name: data.contractor_name,
+          company_name: data.company_name,
+          phone: data.phone,
+          email: data.email || '',
+          contract_value: Number(data.contract_value),
+          start_date: data.start_date,
+          end_date: data.end_date || null,
+          site: Number(data.site)
+        };
+
+        console.log('CONTRACTOR PAYLOAD:', payload);
+
+        const response = await fetch(`${API_BASE}/contractors/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+
+        console.log('CONTRACTOR RESPONSE:', response.status, result);
+
+        if (!response.ok) {
+  throw new Error(
+    `CREATE CONTRACTOR ${response.status}: ${JSON.stringify(result)}`
+  );
+}
+
+console.log('CONTRACTOR CREATED:', result);
+
+toast('Contractor created successfully');
+
+closeModal();
+
+await renderContractors();
+
+      } catch (error) {
+        console.error('CONTRACTOR CREATE ERROR:', error);
+        toast('Failed to create contractor');
+      }
+    });
+
+  } catch (error) {
+    console.error('CONTRACTOR FORM ERROR:', error);
+    toast('Could not load sites');
   }
 }
 async function openEquipmentForm() {

@@ -19,27 +19,17 @@ class ContractorListCreateView(generics.ListCreateAPIView):
         )
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
-
-
-@api_view(["DELETE"])
-@permission_classes([IsAuthenticated])
-def contractor_detail(request, pk):
-
-    try:
-        contractor = Contractor.objects.get(
-            pk=pk,
-            created_by=request.user
-        )
-    except Contractor.DoesNotExist:
-        return Response(
-            {"detail": "Contractor record not found."},
-            status=status.HTTP_404_NOT_FOUND
+        serializer.save(
+            created_by=self.request.user
         )
 
-    contractor.delete()
 
-    return Response(
-        {"detail": "Contractor record deleted successfully."},
-        status=status.HTTP_204_NO_CONTENT
-    )
+class ContractorDetailView(generics.RetrieveUpdateDestroyAPIView):
+
+    serializer_class = ContractorSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Contractor.objects.filter(
+            created_by=self.request.user
+        )

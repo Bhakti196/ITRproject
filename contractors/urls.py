@@ -1,7 +1,15 @@
 from django.urls import path
-from .views import ContractorListCreateView, contractor_detail
+from .views import ContractorListCreateView, ContractorDetailView
 
 urlpatterns = [
-    path("", ContractorListCreateView.as_view(), name="contractors"),
-    path("<int:pk>/", contractor_detail, name="contractor_detail"),
+    path(
+        '',
+        ContractorListCreateView.as_view(),
+        name='contractor-list-create'
+    ),
+    path(
+        '<int:pk>/',
+        ContractorDetailView.as_view(),
+        name='contractor-detail'
+    ),
 ]
