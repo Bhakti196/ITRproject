@@ -27,6 +27,63 @@
     --radius:2px;
   }
   *{box-sizing:border-box; margin:0; padding:0;}
+  #loginScreen {
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  background: #0f1419;
+  padding: 24px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 420px;
+  background: #182027;
+  border: 1px solid #2b3943;
+  border-radius: 12px;
+  padding: 36px;
+  box-sizing: border-box;
+}
+
+.login-brand {
+  margin-bottom: 30px;
+}
+
+.login-card h1 {
+  margin: 0 0 8px;
+}
+
+.login-card p {
+  margin: 0 0 28px;
+  opacity: .7;
+}
+
+.login-card label {
+  display: block;
+  margin: 16px 0 7px;
+}
+
+.login-card input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid #394852;
+  background: #10171c;
+  color: inherit;
+}
+
+.login-card button {
+  width: 100%;
+  margin-top: 24px;
+}
+
+#loginError {
+  margin-top: 16px;
+  padding: 10px;
+  border-radius: 6px;
+  background: rgba(220, 70, 70, .12);
+}
   html,body{height:100%;}
   body{
     font-family:'Inter', sans-serif;
@@ -273,7 +330,13 @@
     border:1px solid rgba(255,106,61,0.4);
     padding:2px 6px; border-radius:2px;
   }
-  .ai-card-title{font-family:'Space Grotesk',sans-serif; font-size:13px; font-weight:600;}
+  .ai-card-title{
+  font-family:'Space Grotesk',sans-serif;
+  font-size:13px;
+  font-weight:600;
+  color:#ffffff;
+  margin-bottom:8px;
+}
   .ai-card-body{font-size:12px; color:#cdd8e0; line-height:1.5;}
   .ai-card-body b{color:#fff;}
 
@@ -398,6 +461,41 @@
 </style>
 </head>
 <body>
+<div id="loginScreen" style="display:none;">
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="brand-title">Site Intelligence</div>
+      <div class="brand-sub">AI Construction CRM</div>
+    </div>
+
+    <h1>Welcome back</h1>
+    <p>Sign in to access your construction dashboard.</p>
+
+    <form id="loginForm">
+      <label>Username</label>
+      <input
+        type="text"
+        id="loginUsername"
+        placeholder="Enter username"
+        required
+      >
+
+      <label>Password</label>
+      <input
+        type="password"
+        id="loginPassword"
+        placeholder="Enter password"
+        required
+      >
+
+      <div id="loginError" style="display:none;"></div>
+
+      <button type="submit" class="btn primary">
+        Login
+      </button>
+    </form>
+  </div>
+</div>
 
 <div id="app">
   <aside id="sidebar">
@@ -499,11 +597,761 @@
 <div class="toast" id="toast"></div>
 
 <script>
+document.querySelectorAll('#sidebar .count').forEach(el => {
+  el.style.display = 'none';
+});
 /* =======================================================
    STATE
 ======================================================= */
 const uid = (() => { let n = 1000; return () => 'ID-' + (n++); })();
+const API_BASE = 'http://127.0.0.1:8001/api';
+let accessToken = localStorage.getItem('access_token') || '';
+async function loginBackend(username, password) {
+  const response = await fetch(`${API_BASE}/login/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      username: username,
+      password: password
+    })
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      `LOGIN ${response.status}: ${JSON.stringify(data)}`
+    );
+  }
+
+  accessToken = data.access;
+
+  localStorage.setItem('access_token', data.access);
+
+  if (data.refresh) {
+    localStorage.setItem('refresh_token', data.refresh);
+  }
+
+  console.log('LOGIN SUCCESS');
+}
+function checkLogin() {
+  const token = localStorage.getItem('access_token');
+
+  if (token) {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('app').style.display = '';
+
+    renderDashboard();
+  } else {
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('app').style.display = 'none';
+  }
+}
+
+checkLogin();
+
+async function refreshAccessToken() {
+  const refreshToken = localStorage.getItem('refresh_token');
+
+  if (!refreshToken) {
+    throw new Error('NO_REFRESH_TOKEN');
+  }
+
+  const response = await fetch(`${API_BASE}/refresh/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      refresh: refreshToken
+    })
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(`REFRESH ${response.status}: ${JSON.stringify(data)}`);
+  }
+
+  localStorage.setItem('access_token', data.access);
+
+  accessToken = data.access;
+
+  console.log('ACCESS TOKEN REFRESHED');
+
+  return data.access;
+}
+
+
+async function apiFetch(endpoint, options = {}) {
+  let token = localStorage.getItem('access_token') || '';
+
+  console.log('USING TOKEN:', token ? 'YES' : 'NO');
+
+  let response = await fetch(`${API_BASE}${endpoint}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  // Access token expired
+  if (response.status === 401) {
+    console.log('ACCESS TOKEN EXPIRED — TRYING REFRESH');
+
+    try {
+      token = await refreshAccessToken();
+
+      // Retry the original request with the new token
+      response = await fetch(`${API_BASE}${endpoint}`, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(options.headers || {}),
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+    } catch (refreshError) {
+      console.error('REFRESH FAILED:', refreshError);
+
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+
+      document.getElementById('loginScreen').style.display = 'flex';
+      document.getElementById('app').style.display = 'none';
+
+      throw new Error('SESSION_EXPIRED');
+    }
+  }
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`API ${response.status}: ${text}`);
+  }
+
+  return await response.json();
+}
+document.getElementById('loginForm').addEventListener('submit', async function (e) {
+  e.preventDefault();
+
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errorBox = document.getElementById('loginError');
+
+  errorBox.style.display = 'none';
+
+  try {
+    await loginBackend(username, password);
+
+    // Hide login
+    document.getElementById('loginScreen').style.display = 'none';
+
+    // Show CRM
+    document.getElementById('app').style.display = '';
+
+    console.log('LOGIN PAGE SUCCESS');
+
+    // Load dashboard
+    if (typeof renderDashboard === 'function') {
+      await renderDashboard();
+    }
+
+  } catch (error) {
+    console.error('LOGIN ERROR:', error);
+
+    errorBox.textContent = 'Invalid username or password.';
+    errorBox.style.display = 'block';
+  }
+});
+async function createBackendProject(projectData) {
+  const response = await fetch(`${API_BASE}/projects/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify(projectData)
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`CREATE PROJECT ${response.status}: ${text}`);
+  }
+
+  return await response.json();
+}
+async function createBackendSite(data) {
+  const response = await fetch(`${API_BASE}/sites/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify(data)
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`CREATE SITE ${response.status}: ${text}`);
+  }
+
+  return await response.json();
+}
+async function getBackendProjects() {
+  try {
+    const projects = await apiFetch('/projects/');
+    console.log('DJANGO PROJECTS:', projects);
+    return projects;
+  } catch (error) {
+    console.error('DJANGO PROJECTS ERROR:', error);
+    return [];
+  }
+}
+async function deleteBackendProject(projectId) {
+  const token = localStorage.getItem('access_token') || '';
+
+  const response = await fetch(
+    `${API_BASE}/projects/${projectId}/`,
+    {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+    }
+  );
+
+  if (!response.ok && response.status !== 204) {
+    const text = await response.text();
+    throw new Error(`DELETE PROJECT ${response.status}: ${text}`);
+  }
+
+  return true;
+}
+
+
+async function deleteProjectRecord(projectId) {
+  if (!confirm('Are you sure you want to delete this project?')) {
+    return;
+  }
+
+  try {
+    await deleteBackendProject(projectId);
+
+    toast('Project deleted successfully');
+
+    // Refresh the Projects screen
+    await renderProjects();
+
+  } catch (error) {
+    console.error('DELETE PROJECT ERROR:', error);
+    toast('Failed to delete project');
+  }
+}
+async function getBackendContractors() {
+  try {
+
+    const data = await apiFetch('/contractors/');
+
+    console.log('DJANGO CONTRACTORS:', data);
+
+    return Array.isArray(data)
+      ? data
+      : (data.results || []);
+
+  } catch (error) {
+
+    console.error(
+      'DJANGO CONTRACTORS ERROR:',
+      error
+    );
+
+    return [];
+  }
+}
+async function getBackendDPR() {
+  try {
+    const dpr = await apiFetch('/dpr/');
+    console.log('DJANGO DPR:', dpr);
+    return dpr;
+  } catch (error) {
+    console.error('DJANGO DPR ERROR:', error);
+    return [];
+  }
+}
+async function getBackendMaterials() {
+  try {
+    const materials = await apiFetch('/materials/');
+    console.log('DJANGO MATERIALS:', materials);
+    return materials;
+  } catch (error) {
+    console.error('DJANGO MATERIALS ERROR:', error);
+    return [];
+  }
+}
+async function createBackendLabour(labourData) {
+  const response = await fetch(`${API_BASE}/labour/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify(labourData)
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`CREATE LABOUR ${response.status}: ${text}`);
+  }
+
+  return await response.json();
+}
+async function getBackendLabour() {
+  try {
+    const labour = await apiFetch('/labour/');
+    console.log('DJANGO LABOUR:', labour);
+    return labour;
+  } catch (error) {
+    console.error('DJANGO LABOUR ERROR:', error);
+    return [];
+  }
+}
+async function createBackendEquipment(equipmentData) {
+  const response = await fetch(`${API_BASE}/equipment/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify(equipmentData)
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`CREATE EQUIPMENT ${response.status}: ${text}`);
+  }
+
+  return await response.json();
+}
+async function getBackendEquipment() {
+  try {
+    const equipment = await apiFetch('/equipment/');
+    console.log('DJANGO EQUIPMENT:', equipment);
+    return equipment;
+  } catch (error) {
+    console.error('DJANGO EQUIPMENT ERROR:', error);
+    return [];
+  }
+}
+async function createBackendBilling(billingData) {
+  const response = await fetch(`${API_BASE}/billing/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify(billingData)
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`CREATE BILLING ${response.status}: ${text}`);
+  }
+
+  return await response.json();
+}
+
+async function getBackendBilling() {
+  try {
+    const billing = await apiFetch('/billing/');
+    console.log('DJANGO BILLING:', billing);
+    return billing;
+  } catch (error) {
+    console.error('DJANGO BILLING ERROR:', error);
+    return [];
+  }
+}
+async function createBackendPayment(paymentData) {
+  const response = await fetch(`${API_BASE}/payments/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify(paymentData)
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`CREATE PAYMENT ${response.status}: ${text}`);
+  }
+
+  return await response.json();
+}
+
+async function getBackendPayments() {
+  try {
+    const payments = await apiFetch('/payments/');
+    console.log('DJANGO PAYMENTS:', payments);
+    return payments;
+  } catch (error) {
+    console.error('DJANGO PAYMENTS ERROR:', error);
+    return [];
+  }
+}
+async function createBackendDPR(dprData) {
+  const response = await fetch(`${API_BASE}/dpr/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify(dprData)
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`CREATE DPR ${response.status}: ${text}`);
+  }
+
+  return await response.json();
+}
+async function getBackendSites() {
+  try {
+    const sites = await apiFetch('/sites/');
+    console.log('DJANGO SITES:', sites);
+    return sites;
+  } catch (error) {
+    console.error('DJANGO SITES ERROR:', error);
+    return [];
+  }
+}
+async function getBackendTasks() {
+  try {
+    const tasks = await apiFetch('/tasks/');
+    console.log('DJANGO TASKS:', tasks);
+    return tasks;
+  } catch (error) {
+    console.error('DJANGO TASKS ERROR:', error);
+    return [];
+  }
+}
+
+async function createBackendTask(taskData) {
+  const response = await fetch(`${API_BASE}/tasks/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify(taskData)
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`CREATE TASK ${response.status}: ${text}`);
+  }
+
+  return await response.json();
+}
+async function getBackendClients() {
+  try {
+    const clients = await apiFetch('/clients/');
+    console.log('DJANGO CLIENTS:', clients);
+    return clients;
+  } catch (error) {
+    console.error('DJANGO CLIENTS ERROR:', error);
+    return [];
+  }
+}
+
+async function createBackendClient(clientData) {
+  const response = await fetch(`${API_BASE}/clients/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify(clientData)
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`CREATE CLIENT ${response.status}: ${text}`);
+  }
+
+  return await response.json();
+}
+async function deleteBackendEquipment(id) {
+  const token = localStorage.getItem('access_token') || '';
+
+  const response = await fetch(`${API_BASE}/equipment/${id}/`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`DELETE EQUIPMENT ${response.status}: ${text}`);
+  }
+
+  return true;
+}
+async function deleteBackendMaterial(id) {
+
+  const response = await fetch(
+    `${API_BASE}/materials/${id}/`,
+    {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    }
+  );
+
+  if (!response.ok) {
+    const text = await response.text();
+
+    throw new Error(
+      `DELETE MATERIAL ${response.status}: ${text}`
+    );
+  }
+
+  return true;
+}
+
+
+async function deleteMaterialRecord(id) {
+
+  if (!confirm(
+    'Are you sure you want to delete this material?'
+  )) {
+    return;
+  }
+
+  try {
+
+    console.log(
+      'DELETING DJANGO MATERIAL:',
+      id
+    );
+
+    await deleteBackendMaterial(id);
+
+    console.log(
+      'DJANGO MATERIAL DELETED:',
+      id
+    );
+
+    toast(
+      'Material deleted successfully'
+    );
+
+    // Reload fresh data from Django
+    await renderMaterials();
+
+  } catch (error) {
+
+    console.error(
+      'DELETE MATERIAL ERROR:',
+      error
+    );
+
+    toast(
+      'Failed to delete material'
+    );
+  }
+}
+async function deleteBackendSite(id) {
+
+  const response = await fetch(
+    `${API_BASE}/sites/${id}/`,
+    {
+      method: 'DELETE',
+
+      headers: {
+        'Authorization':
+          `Bearer ${accessToken}`
+      }
+    }
+  );
+
+  if (!response.ok) {
+
+    const text =
+      await response.text();
+
+    throw new Error(
+      `DELETE SITE ${response.status}: ${text}`
+    );
+  }
+
+  return true;
+}
+
+
+async function deleteSiteRecord(id) {
+
+  if (!confirm(
+    'Are you sure you want to delete this site?'
+  )) {
+    return;
+  }
+
+  try {
+
+    console.log(
+      'DELETING DJANGO SITE:',
+      id
+    );
+
+    await deleteBackendSite(id);
+
+    console.log(
+      'DJANGO SITE DELETED:',
+      id
+    );
+
+    toast(
+      'Site deleted successfully'
+    );
+
+    // Immediately refresh the Sites table
+    await renderSites();
+
+  } catch (error) {
+
+    console.error(
+      'DELETE SITE ERROR:',
+      error
+    );
+
+    toast(
+      'Failed to delete site'
+    );
+  }
+}
+async function deleteEquipmentRecord(id) {
+  if (!confirm('Are you sure you want to delete this equipment?')) {
+    return;
+  }
+
+  try {
+    await deleteBackendEquipment(id);
+
+    toast('Equipment deleted from Django');
+
+    await renderEquipment();
+
+  } catch (error) {
+    console.error('DELETE EQUIPMENT ERROR:', error);
+    toast('Failed to delete equipment');
+  }
+}
+async function deleteBackendBilling(id) {
+  const token = localStorage.getItem('access_token') || '';
+
+  const response = await fetch(`${API_BASE}/billing/${id}/`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`DELETE BILLING ${response.status}: ${text}`);
+  }
+
+  return true;
+}
+async function deleteBackendLabour(id) {
+
+  const token = localStorage.getItem('access_token') || '';
+
+  const response = await fetch(`${API_BASE}/labour/${id}/`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`DELETE LABOUR ${response.status}: ${text}`);
+  }
+
+  return true;
+}
+async function deleteBillingRecord(id) {
+  if (!confirm('Delete this billing record?')) return;
+
+  try {
+    await deleteBackendBilling(id);
+
+    toast('Billing record deleted');
+
+    await renderBilling();
+
+  } catch (error) {
+    console.error('DELETE BILLING ERROR:', error);
+    toast('Failed to delete billing record');
+  }
+}
+async function deleteBackendClient(id) {
+  try {
+    await apiFetch(`/clients/${id}/`, {
+      method: 'DELETE'
+    });
+
+    console.log('DJANGO CLIENT DELETED:', id);
+
+  } catch (error) {
+    console.error('DJANGO CLIENT DELETE ERROR:', error);
+    throw error;
+  }
+}
+async function createBackendMaterial(materialData) {
+  const response = await fetch(`${API_BASE}/materials/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify(materialData)
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`CREATE MATERIAL ${response.status}: ${text}`);
+  }
+
+  return await response.json();
+}
+
 const todayISO = () => new Date().toISOString().slice(0,10);
+function normalizeBackendProject(bp) {
+  return {
+    id: bp.id,
+    name: bp.project_name,
+    target: bp.end_date,
+    start: bp.start_date,
+    status: bp.status,
+
+    // Temporary: existing AI calculations still need these.
+    // We will replace these with Django fields/API data next.
+    budget: 0,
+    spend: 0,
+    progress: 0
+  };
+}
 const daysBetween = (a,b) => Math.round((new Date(b) - new Date(a)) / 86400000);
 const fmtMoney = n => '₹' + Number(n).toLocaleString('en-IN');
 const fmtDate = d => new Date(d).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
@@ -581,74 +1429,288 @@ function toast(msg){
 /* =======================================================
    AI LAYER — lightweight heuristic "predictions"
 ======================================================= */
+
 const AI = {
-  completion(p){
+
+  completion(p) {
     const elapsed = daysBetween(p.start, todayISO());
     const totalPlanned = daysBetween(p.start, p.target);
-    const rate = p.progress / Math.max(elapsed,1); // % per day
-    const daysNeeded = rate > 0 ? Math.round((100 - p.progress) / rate) : 999;
-    const projected = new Date(Date.now() + daysNeeded*86400000);
-    const delayDays = daysBetween(p.target, projected.toISOString().slice(0,10));
-    return {projected, delayDays, totalPlanned, elapsed};
+    const rate = p.progress / Math.max(elapsed, 1);
+
+    const daysNeeded =
+      rate > 0
+        ? Math.round((100 - p.progress) / rate)
+        : 999;
+
+    const projected =
+      new Date(Date.now() + daysNeeded * 86400000);
+
+    const delayDays =
+      daysBetween(
+        p.target,
+        projected.toISOString().slice(0, 10)
+      );
+
+    return {
+      projected,
+      delayDays,
+      totalPlanned,
+      elapsed
+    };
   },
-  costOverrun(p){
+
+  costOverrun(p) {
     const spendRatio = p.spend / p.budget;
     const progressRatio = p.progress / 100;
-    const drift = progressRatio > 0 ? (spendRatio - progressRatio) / progressRatio : 0;
-    const projectedFinalCost = p.budget * (1 + Math.max(drift,0));
-    return {spendRatio, progressRatio, drift, projectedFinalCost};
+
+    const drift =
+      progressRatio > 0
+        ? (spendRatio - progressRatio) / progressRatio
+        : 0;
+
+    const projectedFinalCost =
+      p.budget * (1 + Math.max(drift, 0));
+
+    return {
+      spendRatio,
+      progressRatio,
+      drift,
+      projectedFinalCost
+    };
   },
-  riskLevel(p){
+
+  riskLevel(p) {
     const c = AI.completion(p);
     const co = AI.costOverrun(p);
-    if(c.delayDays > 20 || co.drift > 0.18) return 'high';
-    if(c.delayDays > 5 || co.drift > 0.07) return 'med';
+
+    if (c.delayDays > 20 || co.drift > 0.18) {
+      return 'high';
+    }
+
+    if (c.delayDays > 5 || co.drift > 0.07) {
+      return 'med';
+    }
+
     return 'low';
   },
-  materialAlerts(){
-    return state.materials.filter(m => m.qty <= m.threshold);
+
+  materialAlerts() {
+    return state.materials.filter(
+      m => m.qty <= m.threshold
+    );
   },
-  labourForecast(site){
-    const l = state.labour.filter(x=>x.site===site);
-    const avgAtt = l.length ? l.reduce((s,x)=>s+x.attendance/x.days,0)/l.length : 0;
+
+  labourForecast(site) {
+    const l =
+      state.labour.filter(
+        x => x.site === site
+      );
+
+    const avgAtt =
+      l.length
+        ? l.reduce(
+            (s, x) => s + x.attendance / x.days,
+            0
+          ) / l.length
+        : 0;
+
     const shortfall = avgAtt < 0.85;
-    return {count: l.length, avgAtt, shortfall};
+
+    return {
+      count: l.length,
+      avgAtt,
+      shortfall
+    };
   },
-  safetyRisk(site){
-    const logs = state.progress.filter(x=>x.site===site);
-    const keywords = ['unsafe','hazard','accident','fall','unguarded','loose','seepage','near-miss','injur'];
-    const flagged = logs.filter(l => keywords.some(k => l.issues.toLowerCase().includes(k)));
-    return {flagged, level: flagged.length >= 2 ? 'high' : flagged.length === 1 ? 'med' : 'low'};
+
+  safetyRisk(site) {
+    const logs =
+      state.progress.filter(
+        x => x.site === site
+      );
+
+    const keywords = [
+      'unsafe',
+      'hazard',
+      'accident',
+      'fall',
+      'unguarded',
+      'loose',
+      'seepage',
+      'near-miss',
+      'injur'
+    ];
+
+    const flagged =
+      logs.filter(l =>
+        keywords.some(k =>
+          l.issues.toLowerCase().includes(k)
+        )
+      );
+
+    return {
+      flagged,
+      level:
+        flagged.length >= 2
+          ? 'high'
+          : flagged.length === 1
+            ? 'med'
+            : 'low'
+    };
   },
-  generateReport(site){
-    const logs = state.progress.filter(x=>x.site===site).sort((a,b)=>new Date(b.date)-new Date(a.date));
-    if(!logs.length) return 'No progress data available for this site yet.';
+
+  generateReportFromDPR(projectName, dprLogs) {
+
+    if (!dprLogs.length) {
+      return 'No progress data available for this project yet.';
+    }
+
+    const logs = dprLogs
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(b.report_date) -
+          new Date(a.report_date)
+      );
+
     const latest = logs[0];
-    const safety = AI.safetyRisk(site);
-    let out = `As of ${fmtDate(latest.date)}, ${site} reports: ${latest.activity}. `;
-    out += safety.flagged.length ? `Safety attention required — ${safety.flagged.length} recent entr${safety.flagged.length>1?'ies':'y'} flagged site conditions for review. ` : `No active safety flags in recent logs. `;
-    out += logs.length > 1 ? `Compared to the prior entry on ${fmtDate(logs[1].date)}, work has progressed as planned.` : `This is the first logged entry for the site.`;
+
+    const previous =
+      logs.length > 1
+        ? logs[1]
+        : null;
+
+    let out =
+      `As of ${fmtDate(latest.report_date)}, ` +
+      `${projectName} reports: ` +
+      `${latest.work_done || 'No activity description available.'} `;
+
+    out +=
+      `Current reported progress is ` +
+      `${latest.progress_percentage ?? 0}% ` +
+      `with ${latest.workers_present ?? 0} workers present. `;
+
+    if (latest.weather) {
+      out += `Weather was ${latest.weather}. `;
+    }
+
+    const remarks = latest.remarks || '';
+
+    const safetyKeywords = [
+      'unsafe',
+      'hazard',
+      'accident',
+      'fall',
+      'unguarded',
+      'loose',
+      'seepage',
+      'near-miss',
+      'injur'
+    ];
+
+    const safetyFlagged =
+      safetyKeywords.some(k =>
+        remarks.toLowerCase().includes(k)
+      );
+
+    if (safetyFlagged) {
+      out +=
+        'Safety attention is required based on the latest site remarks. ';
+    } else {
+      out +=
+        'No active safety issue was identified in the latest remarks. ';
+    }
+
+    if (previous) {
+
+      const change =
+        (latest.progress_percentage ?? 0) -
+        (previous.progress_percentage ?? 0);
+
+      if (change > 0) {
+
+        out +=
+          `Progress increased by ${change} percentage points ` +
+          `from the previous DPR.`;
+
+      } else if (change < 0) {
+
+        out +=
+          `Reported progress is ${Math.abs(change)} percentage points ` +
+          `below the previous DPR.`;
+
+      } else {
+
+        out +=
+          'Reported progress is unchanged from the previous DPR.';
+      }
+
+    } else {
+
+      out +=
+        'This is the first available DPR for this project.';
+    }
+
     return out;
   }
-};
 
+};
 /* =======================================================
    NAV
 ======================================================= */
-document.querySelectorAll('.nav-item').forEach(btn=>{
-  btn.addEventListener('click', ()=> showView(btn.dataset.view));
+document.querySelectorAll('.nav-item').forEach(btn => 
+{
+  btn.addEventListener('click', () => {
+    showView(btn.dataset.view);
+  });
 });
-document.getElementById('btn-refresh-ai').addEventListener('click', ()=>{
+
+document.getElementById('btn-refresh-ai').addEventListener('click', () => {
   toast('AI predictions recalculated');
   render();
 });
-document.getElementById('btn-quick-add').addEventListener('click', ()=>{
-  const map = {clients:openClientForm, projects:openProjectForm, sites:openSiteForm, materials:openMaterialForm,
-    labour:openLabourForm, contractors:openContractorForm, equipment:openEquipmentForm, billing:openInvoiceForm,
-    payments:openPaymentForm, progress:openProgressForm};
-  (map[currentView] || openProjectForm)();
-});
 
+document.getElementById('btn-quick-add').addEventListener('click', () => {
+
+  const view =
+    document.querySelector('.nav-item.active')?.dataset.view;
+
+  console.log('QUICK ADD VIEW:', view);
+
+  if (view === 'billing') {
+
+    if (typeof openBillingForm !== 'function') {
+      console.error('openBillingForm is not defined');
+      toast('Billing form is not loaded');
+      return;
+    }
+
+    openBillingForm();
+    return;
+  }
+
+  const map = {
+  clients: openClientForm,
+  contractors: openContractorForm,
+  projects: openProjectForm,
+  sites: openSiteForm,
+  progress: openDPRForm,
+  materials: openMaterialForm,
+  labour: openLabourForm,
+  equipment: openEquipmentForm,
+  payments: openPaymentForm
+};
+
+  const fn = map[view];
+
+  if (!fn) {
+    toast('Quick add is not available for this section');
+    return;
+  }
+
+  fn();
+
+});
 function showView(view){
   currentView = view;
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
@@ -694,442 +1756,2871 @@ function sheet(labelText, titleText, subText){
     <div class="sheet-title"><span>${titleText}</span>${subText?`<span class="sub">${subText}</span>`:''}</div>`;
   return s;
 }
+async function loadProjectRisk(projectId, card) {
+  try {
+    const result = await apiFetch(`/ai/project-risk/${projectId}/`);
+
+    const risk = (result.overall_risk || 'LOW').toLowerCase();
+
+    card.classList.remove('risk-low', 'risk-med', 'risk-high');
+
+    const riskClass = risk === 'medium' ? 'med' : risk;
+    card.classList.add(`risk-${riskClass}`);
+
+    const riskElement = card.querySelector('.backend-risk-level');
+
+    if (riskElement) {
+      riskElement.textContent = risk;
+    }
+  } catch (error) {
+    console.error(`Project risk API error for project ${projectId}:`, error);
+  }
+}
 
 /* =======================================================
    DASHBOARD
 ======================================================= */
-function renderDashboard(){
-  const totalBudget = state.projects.reduce((s,p)=>s+p.budget,0);
-  const totalSpend = state.projects.reduce((s,p)=>s+p.spend,0);
-  const activeSites = state.sites.filter(s=>s.status==='Active').length;
-  const dueInvoices = state.invoices.filter(i=>i.status!=='Paid').reduce((s,i)=>s+i.amount,0);
+async function renderDashboard() {
+  if (!localStorage.getItem('access_token')) {
+    console.log('DASHBOARD BLOCKED: No login token');
+    return;
+  }
+
+ const backendProjects = await getBackendProjects();
+const backendSites = await getBackendSites();
+const backendBilling = await getBackendBilling();
+const backendPayments = await getBackendPayments();
+
+  
+  const totalSites = backendSites.length;
+
+  // Billing is still being integrated separately.
+  
+
+const dueInvoices = backendBilling
+  .filter(i => i.status !== 'PAID')
+  .reduce((sum, i) => sum + Number(i.amount || 0), 0);
+
+const overdueInvoices = backendBilling
+  .filter(i => i.status !== 'PAID').length;
 
   const kpiWrap = document.createElement('div');
   kpiWrap.className = 'grid grid-4';
+
   kpiWrap.innerHTML = `
-    <div class="kpi"><div class="kpi-label">Active Projects</div><div class="kpi-value">${state.projects.length}</div><div class="kpi-delta">${activeSites} sites live</div></div>
-    <div class="kpi"><div class="kpi-label">Portfolio Budget</div><div class="kpi-value">${fmtMoney(totalBudget)}</div><div class="kpi-delta">${fmtMoney(totalSpend)} spent</div></div>
-    <div class="kpi"><div class="kpi-label">Spend Utilisation</div><div class="kpi-value">${Math.round(totalSpend/totalBudget*100)}%</div><div class="kpi-delta ${totalSpend/totalBudget>0.75?'down':'up'}">of total budget</div></div>
-    <div class="kpi"><div class="kpi-label">Outstanding Receivables</div><div class="kpi-value">${fmtMoney(dueInvoices)}</div><div class="kpi-delta down">${state.invoices.filter(i=>i.status==='Overdue').length} overdue invoice(s)</div></div>
-  `;
+  <div class="kpi">
+    <div class="kpi-label">Active Projects</div>
+    <div class="kpi-value">${backendProjects.length}</div>
+    <div class="kpi-delta">${totalSites} sites in Django</div>
+  </div>
+
+  <div class="kpi">
+    <div class="kpi-label">Total Payments</div>
+    <div class="kpi-value">
+      ${fmtMoney(
+        backendPayments.reduce(
+          (sum, p) => sum + Number(p.amount || p.payment_amount || 0),
+          0
+        )
+      )}
+    </div>
+    <div class="kpi-delta">
+      ${backendPayments.length} payment record(s)
+    </div>
+  </div>
+
+  <div class="kpi">
+    <div class="kpi-label">Billing Records</div>
+    <div class="kpi-value">${backendBilling.length}</div>
+    <div class="kpi-delta">
+      ${overdueInvoices} outstanding invoice(s)
+    </div>
+  </div>
+
+  <div class="kpi">
+    <div class="kpi-label">Outstanding Receivables</div>
+    <div class="kpi-value">${fmtMoney(dueInvoices)}</div>
+    <div class="kpi-delta down">
+      ${overdueInvoices} outstanding invoice(s)
+    </div>
+  </div>
+`;
+
   els.content.appendChild(kpiWrap);
 
-  const aiSheet = sheet('AI Intelligence Layer', 'Predictive Signals', 'Recalculated from live project & site data');
+
+  // =========================================================
+  // AI INTELLIGENCE
+  // =========================================================
+
+  const aiSheet = sheet(
+    'AI Intelligence Layer',
+    'Predictive Signals',
+    'Recalculated from live project & site data'
+  );
+
   const aiGrid = document.createElement('div');
   aiGrid.className = 'grid grid-3 section-gap';
 
-  state.projects.forEach(p=>{
-    const c = AI.completion(p);
-    const co = AI.costOverrun(p);
-    const risk = AI.riskLevel(p);
+  const dashboardProjects =
+    backendProjects.map(normalizeBackendProject);
+
+  dashboardProjects.forEach(p => {
     const card = document.createElement('div');
-    card.className = `ai-card risk-${risk}`;
+
+    card.className = 'ai-card';
+
     card.innerHTML = `
-      <div class="ai-card-head"><span class="ai-tag">Completion + Cost</span></div>
-      <div class="ai-card-title">${p.name}</div>
+      <div class="ai-card-head">
+        <span class="ai-tag">PROJECT RISK</span>
+      </div>
+
+      <div class="ai-card-title">
+        ${p.name}
+      </div>
+
       <div class="ai-card-body" style="margin-top:6px;">
-        Projected finish: <b>${fmtDate(c.projected)}</b> (${c.delayDays > 0 ? c.delayDays+' days late' : 'on schedule'})<br>
-        Projected final cost: <b>${fmtMoney(Math.round(co.projectedFinalCost))}</b> vs budget ${fmtMoney(p.budget)}<br>
-        Risk level: <b style="text-transform:capitalize">${risk}</b>
-      </div>`;
+        Start date:
+        <b>${fmtDate(p.start)}</b>
+        <br>
+
+        Target date:
+        <b>${fmtDate(p.target)}</b>
+        <br>
+
+        Project status:
+        <b>${p.status}</b>
+        <br>
+
+        AI Risk:
+        <b class="backend-risk-level"
+           style="text-transform:capitalize">
+          Loading...
+        </b>
+      </div>
+    `;
+
     aiGrid.appendChild(card);
+
+    // Django project's real database ID
+    loadProjectRisk(p.id, card);
   });
+
   aiSheet.appendChild(aiGrid);
+
+
+  // =========================================================
+  // MATERIAL + LABOUR + SAFETY
+  // =========================================================
 
   const aiGrid2 = document.createElement('div');
   aiGrid2.className = 'grid grid-3 section-gap';
-  const matAlerts = AI.materialAlerts();
-  aiGrid2.innerHTML += `
-    <div class="ai-card ${matAlerts.length?'risk-med':'risk-low'}">
-      <div class="ai-card-head"><span class="ai-tag">Material Forecast</span></div>
-      <div class="ai-card-title">Reorder Alerts</div>
-      <div class="ai-card-body" style="margin-top:6px;">
-        ${matAlerts.length ? matAlerts.map(m=>`<b>${m.item}</b> at ${m.site} — ${m.qty} ${m.unit} (below ${m.threshold})`).join('<br>') : 'All stock levels within safe threshold.'}
-      </div>
-    </div>`;
 
-  state.sites.slice(0,2).forEach(s=>{
-    const lf = AI.labourForecast(s.name);
-    const sr = AI.safetyRisk(s.name);
+  const matAlerts = [];
+
+  aiGrid2.innerHTML += `
+    <div class="ai-card ${matAlerts.length ? 'risk-med' : 'risk-low'}">
+      <div class="ai-card-head">
+        <span class="ai-tag">Material Forecast</span>
+      </div>
+
+      <div class="ai-card-title">
+        Reorder Alerts
+      </div>
+
+      <div class="ai-card-body" style="margin-top:6px;">
+        ${
+          matAlerts.length
+            ? matAlerts
+                .map(m =>
+                  `<b>${m.item}</b> at ${m.site} —
+                   ${m.qty} ${m.unit}
+                   (below ${m.threshold})`
+                )
+                .join('<br>')
+            : 'All stock levels within safe threshold.'
+        }
+      </div>
+    </div>
+  `;
+
+  // Keep existing AI labour/safety logic for now.
+  // We'll replace state.sites with Django sites in the next step.
+  backendSites.slice(0, 2).forEach(s => {
+    const siteName = s.site_name;
+
+const lf = AI.labourForecast(siteName);
+const sr = AI.safetyRisk(siteName);
+
     aiGrid2.innerHTML += `
       <div class="ai-card risk-${sr.level}">
-        <div class="ai-card-head"><span class="ai-tag">Labour + Safety</span></div>
-        <div class="ai-card-title">${s.name}</div>
-        <div class="ai-card-body" style="margin-top:6px;">
-          Avg. attendance: <b>${Math.round(lf.avgAtt*100)}%</b> ${lf.shortfall ? '— below optimal, workforce top-up recommended' : '— adequate deployment'}<br>
-          Safety flags (recent logs): <b>${sr.flagged.length}</b> ${sr.level==='high' ? '— escalate to site supervisor' : sr.level==='med' ? '— monitor closely' : '— no action needed'}
+        <div class="ai-card-head">
+          <span class="ai-tag">Labour + Safety</span>
         </div>
-      </div>`;
+
+        <div class="ai-card-title">${siteName}</div>
+
+<div class="ai-card-body" style="margin-top:6px;">
+          Avg. attendance:
+          <b>${Math.round(lf.avgAtt * 100)}%</b>
+
+          ${
+            lf.shortfall
+              ? '— below optimal, workforce top-up recommended'
+              : '— adequate deployment'
+          }
+
+          <br>
+
+          Safety flags (recent logs):
+          <b>${sr.flagged.length}</b>
+
+          ${
+            sr.level === 'high'
+              ? '— escalate to site supervisor'
+              : sr.level === 'med'
+                ? '— monitor closely'
+                : '— no action needed'
+          }
+        </div>
+      </div>
+    `;
   });
+
   aiSheet.appendChild(aiGrid2);
   els.content.appendChild(aiSheet);
 
-  const projSheet = sheet('Execution', 'Project Status', `${state.projects.length} active`);
+
+  // =========================================================
+  // PROJECT STATUS
+  // =========================================================
+
+  const projSheet = sheet(
+    'Execution',
+    'Project Status',
+    `${backendProjects.length} projects`
+  );
+
   const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th>Project</th><th>Client</th><th>Progress</th><th>Budget vs Spend</th><th>Status</th></tr></thead>
-    <tbody>${state.projects.map(p=>`
+
+  tbl.innerHTML = `
+    <thead>
       <tr>
-        <td>${p.name}</td>
-        <td class="muted">${p.client}</td>
-        <td style="min-width:140px;">
-          <div class="progress-track"><div class="progress-fill ${p.progress<40?'':(p.progress<75?'':'green')}" style="width:${p.progress}%"></div></div>
-          <span class="cell-mono" style="font-size:10.5px;">${p.progress}%</span>
-        </td>
-        <td class="cell-mono">${fmtMoney(p.spend)} / ${fmtMoney(p.budget)}</td>
-        <td><span class="badge ${p.status==='On Track'?'badge-green':'badge-amber'}">${p.status}</span></td>
-      </tr>`).join('')}</tbody>`;
+        <th>Project</th>
+        <th>Start Date</th>
+        <th>Target Date</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      ${
+        backendProjects.length
+          ? backendProjects.map(p => `
+              <tr>
+                <td>
+                  <b>${p.project_name}</b>
+                </td>
+
+                <td class="cell-mono">
+                  ${fmtDate(p.start_date)}
+                </td>
+
+                <td class="cell-mono">
+                  ${fmtDate(p.end_date)}
+                </td>
+
+                <td>
+                  <span class="badge ${
+                    p.status === 'IN_PROGRESS'
+                      ? 'badge-green'
+                      : 'badge-amber'
+                  }">
+                    ${p.status}
+                  </span>
+                </td>
+              </tr>
+            `).join('')
+          : `
+              <tr>
+                <td colspan="4" class="muted">
+                  No projects found in Django.
+                </td>
+              </tr>
+          `
+      }
+    </tbody>
+  `;
+
   projSheet.appendChild(tbl);
   els.content.appendChild(projSheet);
 }
-
 /* =======================================================
    CLIENTS
 ======================================================= */
-function renderClients(){
-  const s = sheet('Relationships', 'Client Records', `${state.clients.length} clients`);
-  const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th>Client</th><th>Primary Contact</th><th>Phone</th><th>Linked Projects</th><th>Last Contact</th><th></th></tr></thead>
-    <tbody>${state.clients.map(c=>`
-      <tr>
-        <td><b>${c.name}</b><div class="muted" style="font-size:11px;">${c.address}</div></td>
-        <td>${c.contact}<div class="muted" style="font-size:11px;">${c.email}</div></td>
-        <td class="cell-mono">${c.phone}</td>
-        <td><span class="badge badge-blue">${c.projects} project(s)</span></td>
-        <td class="cell-mono">${fmtDate(c.lastContact)}</td>
-        <td><button class="btn btn-sm btn-ghost-danger" onclick="removeItem('clients','${c.id}')">Archive</button></td>
-      </tr>`).join('')}</tbody>`;
-  s.appendChild(tbl);
-  if(!state.clients.length) s.appendChild(emptyEl('No clients yet — add your first client record.'));
-  els.content.appendChild(s);
+async function renderClients() {
+  try {
+
+    // Clear old Client Records table
+    els.content.innerHTML = '';
+
+    // Get fresh data from Django
+    const backendClients = await getBackendClients();
+
+    const s = sheet(
+      'Relationships',
+      'Client Records',
+      `${backendClients.length} clients`
+    );
+
+    const tbl = document.createElement('table');
+
+    tbl.innerHTML = `
+      <thead>
+        <tr>
+          <th>Client</th>
+          <th>Company</th>
+          <th>Email</th>
+          <th>Phone</th>
+          <th>Address</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+
+      <tbody>
+
+        ${
+          backendClients.length
+
+            ? backendClients.map(c => `
+                <tr>
+
+                  <td>
+                    <b>
+                      ${c.client_name || '—'}
+                    </b>
+                  </td>
+
+                  <td>
+                    ${c.company_name || '—'}
+                  </td>
+
+                  <td>
+                    ${c.email || '—'}
+                  </td>
+
+                  <td class="cell-mono">
+                    ${c.phone || '—'}
+                  </td>
+
+                  <td>
+                    ${c.address || '—'}
+                  </td>
+
+                  <td>
+                    <button
+                      class="btn danger"
+                      style="color: black;"
+                      onclick="deleteClientRecord(${c.id})"
+                    >
+                      Delete
+                    </button>
+                  </td>
+
+                </tr>
+              `).join('')
+
+            : `
+                <tr>
+                  <td colspan="6" class="muted">
+                    No clients found in Django.
+                  </td>
+                </tr>
+              `
+        }
+
+      </tbody>
+    `;
+
+    s.appendChild(tbl);
+    els.content.appendChild(s);
+
+  } catch (error) {
+
+    console.error(
+      'RENDER CLIENTS ERROR:',
+      error
+    );
+
+    toast(
+      'Failed to load clients'
+    );
+  }
 }
-function openClientForm(){
+async function deleteClientRecord(id) {
+
+  if (!confirm(
+    'Are you sure you want to delete this client?'
+  )) {
+    return;
+  }
+
+  try {
+
+    console.log(
+      'DELETING DJANGO CLIENT:',
+      id
+    );
+
+    await deleteBackendClient(id);
+
+    console.log(
+      'DJANGO CLIENT DELETED:',
+      id
+    );
+
+    toast(
+      'Client deleted successfully'
+    );
+
+    // Immediately reload the Clients table
+    await renderClients();
+
+  } catch (error) {
+
+    console.error(
+      'DELETE CLIENT ERROR:',
+      error
+    );
+
+    toast(
+      'Failed to delete client'
+    );
+  }
+}
+function openClientForm() {
   openModal('New Client', [
-    {k:'name', label:'Client / Company Name', type:'text', req:true},
-    {k:'contact', label:'Primary Contact', type:'text', req:true},
-    {k:'phone', label:'Phone', type:'text'},
-    {k:'email', label:'Email', type:'text'},
-    {k:'address', label:'Address', type:'text'},
-  ], data=>{
-    state.clients.unshift({id:uid(), name:data.name, contact:data.contact, phone:data.phone||'—', email:data.email||'—', address:data.address||'—', projects:0, lastContact:todayISO()});
-    toast('Client added'); showView('clients');
+    {
+      k: 'client_name',
+      label: 'Client Name',
+      type: 'text',
+      req: true
+    },
+    {
+      k: 'company_name',
+      label: 'Company Name',
+      type: 'text'
+    },
+    {
+      k: 'email',
+      label: 'Email',
+      type: 'text'
+    },
+    {
+      k: 'phone',
+      label: 'Phone',
+      type: 'text'
+    },
+    {
+      k: 'address',
+      label: 'Address',
+      type: 'text'
+    }
+  ], async data => {
+
+    try {
+
+      await createBackendClient({
+        client_name: data.client_name,
+        company_name: data.company_name || '',
+        email: data.email || '',
+        phone: data.phone || '',
+        address: data.address || ''
+      });
+
+      toast('Client added to Django');
+
+      showView('clients');
+
+    } catch (error) {
+
+      console.error('CLIENT CREATE ERROR:', error);
+
+      toast('Failed to create client');
+
+    }
   });
 }
 
 /* =======================================================
    CONTRACTORS
 ======================================================= */
-function renderContractors(){
-  const s = sheet('Relationships', 'Contractors & Work Packages', `${state.contractors.length} on record`);
-  const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th>Contractor</th><th>Trade</th><th>Phone</th><th>Paid</th><th>Due</th><th>Status</th></tr></thead>
-    <tbody>${state.contractors.map(c=>`
-      <tr>
-        <td><b>${c.name}</b></td>
-        <td>${c.trade}</td>
-        <td class="cell-mono">${c.phone}</td>
-        <td class="cell-mono">${fmtMoney(c.paid)}</td>
-        <td class="cell-mono" style="color:${c.due>0?'#a83329':'inherit'}">${fmtMoney(c.due)}</td>
-        <td><span class="badge ${c.status==='Active'?'badge-green':'badge-gray'}">${c.status}</span></td>
-      </tr>`).join('')}</tbody>`;
-  s.appendChild(tbl);
-  els.content.appendChild(s);
+async function renderContractors() {
+  try {
+    const [backendContractors, backendSites] = await Promise.all([
+      getBackendContractors(),
+      getBackendSites()
+    ]);
+
+    const siteMap = Object.fromEntries(
+      backendSites.map(site => [
+        site.id,
+        site.site_name
+      ])
+    );
+
+    const s = sheet(
+      'Relationships',
+      'Contractors & Work Packages',
+      `${backendContractors.length} on record`
+    );
+
+    const tbl = document.createElement('table');
+
+    tbl.innerHTML = `
+      <thead>
+        <tr>
+          <th>Contractor</th>
+          <th>Company</th>
+          <th>Phone</th>
+          <th>Email</th>
+          <th>Site</th>
+          <th>Contract Value</th>
+          <th>Start Date</th>
+          <th>End Date</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+
+      <tbody>
+
+        ${
+          backendContractors.length
+
+            ? backendContractors.map(c => `
+                <tr>
+
+                  <td>
+                    <b>${c.contractor_name || '—'}</b>
+                  </td>
+
+                  <td>
+                    ${c.company_name || '—'}
+                  </td>
+
+                  <td class="cell-mono">
+                    ${c.phone || '—'}
+                  </td>
+
+                  <td>
+                    ${c.email || '—'}
+                  </td>
+
+                  <td class="muted">
+                    ${siteMap[c.site] || `Site #${c.site}`}
+                  </td>
+
+                  <td class="cell-mono">
+                    ${fmtMoney(Number(c.contract_value || 0))}
+                  </td>
+
+                  <td class="cell-mono">
+                    ${c.start_date
+                      ? fmtDate(c.start_date)
+                      : '—'}
+                  </td>
+
+                  <td class="cell-mono">
+                    ${c.end_date
+                      ? fmtDate(c.end_date)
+                      : '—'}
+                  </td>
+
+                  <td>
+                    <button
+                      class="btn danger"
+                      style="color:black;"
+                      onclick="deleteContractorRecord(${c.id})"
+                    >
+                      Delete
+                    </button>
+                  </td>
+
+                </tr>
+              `).join('')
+
+            : `
+                <tr>
+                  <td colspan="9" class="muted">
+                    No contractors found in Django.
+                  </td>
+                </tr>
+              `
+        }
+
+      </tbody>
+    `;
+
+    s.appendChild(tbl);
+    els.content.appendChild(s);
+
+  } catch (error) {
+    console.error('RENDER CONTRACTORS ERROR:', error);
+    toast('Failed to load contractors');
+  }
 }
-function openContractorForm(){
-  openModal('New Contractor', [
-    {k:'name', label:'Contractor / Firm Name', type:'text', req:true},
-    {k:'trade', label:'Trade / Work Package', type:'text', req:true},
-    {k:'phone', label:'Phone', type:'text'},
-  ], data=>{
-    state.contractors.unshift({id:uid(), name:data.name, trade:data.trade, phone:data.phone||'—', status:'Active', paid:0, due:0});
-    toast('Contractor added'); showView('contractors');
+async function renderProjects() {
+  try {
+
+    // Clear the previous Project Tracking display
+    els.content.innerHTML = '';
+
+    // Get fresh data from Django
+    const [backendProjects, backendSites] = await Promise.all([
+      getBackendProjects(),
+      getBackendSites()
+    ]);
+
+    const siteMap = Object.fromEntries(
+      backendSites.map(site => [
+        site.id,
+        site.site_name
+      ])
+    );
+
+    const s = sheet(
+      "Projects",
+      "Project Tracking",
+      `${backendProjects.length} projects`
+    );
+
+    const tbl = document.createElement("table");
+
+    tbl.innerHTML = `
+      <thead>
+        <tr>
+          <th>Project</th>
+          <th>Description</th>
+          <th>Site</th>
+          <th>Start Date</th>
+          <th>End Date</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+
+      <tbody>
+
+        ${
+          backendProjects.length
+
+            ? backendProjects.map(p => `
+                <tr>
+
+                  <td>
+                    <b>
+                      ${p.project_name || "—"}
+                    </b>
+                  </td>
+
+                  <td>
+                    ${p.description || "—"}
+                  </td>
+
+                  <td class="muted">
+                    ${
+                      siteMap[p.site]
+                      || `Site #${p.site || "—"}`
+                    }
+                  </td>
+
+                  <td class="cell-mono">
+                    ${
+                      p.start_date
+                        ? fmtDate(p.start_date)
+                        : "—"
+                    }
+                  </td>
+
+                  <td class="cell-mono">
+                    ${
+                      p.end_date
+                        ? fmtDate(p.end_date)
+                        : "—"
+                    }
+                  </td>
+
+                  <td>
+                    <span class="badge ${
+                      p.status === "COMPLETED"
+                        ? "badge-green"
+                        : p.status === "IN_PROGRESS"
+                          ? "badge-blue"
+                          : "badge-gray"
+                    }">
+                      ${p.status || "—"}
+                    </span>
+                  </td>
+
+                  <td>
+                    <button
+                      class="btn danger"
+                      style="color: black;"
+                      onclick="deleteProjectRecord(${p.id})"
+                    >
+                      Delete
+                    </button>
+                  </td>
+
+                </tr>
+              `).join("")
+
+            : `
+                <tr>
+                  <td colspan="7" class="muted">
+                    No projects found in Django.
+                  </td>
+                </tr>
+              `
+        }
+
+      </tbody>
+    `;
+
+    s.appendChild(tbl);
+    els.content.appendChild(s);
+
+  } catch (error) {
+
+    console.error(
+      "RENDER PROJECTS ERROR:",
+      error
+    );
+
+    toast("Failed to load projects");
+  }
+}
+async function deleteBackendContractor(id) {
+  const token = localStorage.getItem('access_token') || '';
+
+  const response = await fetch(`${API_BASE}/contractors/${id}/`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
   });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`DELETE CONTRACTOR ${response.status}: ${text}`);
+  }
+
+  return true;
 }
 
-/* =======================================================
-   PROJECTS
-======================================================= */
-function renderProjects(){
-  const s = sheet('Execution', 'Projects', `${state.projects.length} active`);
-  const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th>Project</th><th>Client</th><th>Start → Target</th><th>Progress</th><th>Budget</th><th>Spend</th><th>Status</th><th></th></tr></thead>
-    <tbody>${state.projects.map(p=>`
-      <tr>
-        <td><b>${p.name}</b></td>
-        <td class="muted">${p.client}</td>
-        <td class="cell-mono" style="font-size:11px;">${fmtDate(p.start)} → ${fmtDate(p.target)}</td>
-        <td style="min-width:120px;"><div class="progress-track"><div class="progress-fill" style="width:${p.progress}%"></div></div><span class="cell-mono" style="font-size:10.5px;">${p.progress}%</span></td>
-        <td class="cell-mono">${fmtMoney(p.budget)}</td>
-        <td class="cell-mono">${fmtMoney(p.spend)}</td>
-        <td><span class="badge ${p.status==='On Track'?'badge-green':'badge-amber'}">${p.status}</span></td>
-        <td><button class="btn btn-sm btn-ghost-danger" onclick="removeItem('projects','${p.id}')">Delete</button></td>
-      </tr>`).join('')}</tbody>`;
-  s.appendChild(tbl);
-  els.content.appendChild(s);
-}
-function openProjectForm(){
-  openModal('New Project', [
-    {k:'name', label:'Project Name', type:'text', req:true},
-    {k:'client', label:'Client', type:'select', options:state.clients.map(c=>c.name), req:true},
-    {k:'start', label:'Start Date', type:'date', req:true},
-    {k:'target', label:'Target End Date', type:'date', req:true},
-    {k:'budget', label:'Budget (₹)', type:'number', req:true},
-  ], data=>{
-    state.projects.unshift({id:uid(), name:data.name, client:data.client, start:data.start, target:data.target,
-      budget:Number(data.budget), spend:0, progress:0, status:'On Track'});
-    toast('Project created'); showView('projects');
-  });
+async function deleteContractorRecord(id) {
+  if (!confirm('Are you sure you want to delete this contractor?')) {
+    return;
+  }
+
+  try {
+    await deleteBackendContractor(id);
+
+    toast('Contractor deleted successfully');
+
+    // Reload backend data
+    const contractors = await getBackendContractors();
+
+    // Update local state
+    state.contractors = contractors.map(c => ({
+      id: c.id,
+      name: c.contractor_name,
+      trade: c.company_name,
+      phone: c.phone,
+      paid: 0,
+      due: Number(c.contract_value || 0),
+      status: 'Active'
+    }));
+
+    // Refresh screen
+    showView('contractors');
+
+  } catch (error) {
+    console.error('DELETE CONTRACTOR ERROR:', error);
+    toast('Failed to delete contractor');
+  }
 }
 
+async function openBillingForm() {
+
+  try {
+
+    const [projects, contractors] = await Promise.all([
+      getBackendProjects(),
+      getBackendContractors()
+    ]);
+
+    if (!projects.length) {
+      toast('No Django projects available. Create a project first.');
+      return;
+    }
+
+    if (!contractors.length) {
+      toast('No Django contractors available. Create a contractor first.');
+      return;
+    }
+
+    openModal('New Billing Record', [
+
+      {
+        k: 'project',
+        label: 'Project',
+        type: 'select',
+        options: projects.map(p => ({
+          value: p.id,
+          label: p.project_name
+        })),
+        req: true
+      },
+
+      {
+        k: 'contractor',
+        label: 'Contractor',
+        type: 'select',
+        options: contractors.map(c => ({
+          value: c.id,
+          label: c.contractor_name
+        })),
+        req: true
+      },
+
+      {
+        k: 'invoice_number',
+        label: 'Invoice Number',
+        type: 'text',
+        req: true
+      },
+
+      {
+        k: 'invoice_date',
+        label: 'Invoice Date',
+        type: 'date',
+        req: true
+      },
+
+      {
+        k: 'amount',
+        label: 'Amount (₹)',
+        type: 'number',
+        req: true
+      },
+
+      {
+        k: 'status',
+        label: 'Status',
+        type: 'select',
+        options: [
+          { value: 'PENDING', label: 'Pending' },
+          { value: 'PARTIAL', label: 'Partial' },
+          { value: 'PAID', label: 'Paid' }
+        ],
+        req: true
+      },
+
+      {
+        k: 'description',
+        label: 'Description',
+        type: 'textarea'
+      }
+
+    ], async data => {
+
+      try {
+
+        console.log('CREATING DJANGO BILLING:', data);
+
+        const newBilling = await createBackendBilling({
+
+          project: Number(data.project),
+          contractor: Number(data.contractor),
+          invoice_number: data.invoice_number,
+          invoice_date: data.invoice_date,
+          amount: Number(data.amount),
+          status: data.status,
+          description: data.description || ''
+
+        });
+
+        console.log('DJANGO BILLING CREATED:', newBilling);
+
+        toast('Billing record created in Django');
+
+        // Refresh directly from Django
+        await renderBilling();
+
+      } catch (error) {
+
+        console.error('DJANGO BILLING CREATE ERROR:', error);
+
+        toast('Failed to create billing record');
+
+      }
+
+    });
+
+  } catch (error) {
+
+    console.error('FAILED TO LOAD BILLING OPTIONS:', error);
+
+    toast('Could not load projects or contractors');
+
+  }
+}
+async function openDPRForm() {
+
+  try {
+
+    const backendProjects = await getBackendProjects();
+    const backendTasks = await apiFetch('/tasks/');
+
+    openModal('New Daily Progress Report', [
+
+      {
+        k: 'project',
+        label: 'Project',
+        type: 'select',
+        options: backendProjects.map(project => ({
+          value: project.id,
+          label: project.project_name || `Project #${project.id}`
+        })),
+        req: true
+      },
+
+      {
+        k: 'task',
+        label: 'Task',
+        type: 'select',
+        options: backendTasks.map(task => ({
+          value: task.id,
+          label: task.task_name || `Task #${task.id}`
+        })),
+        req: true
+      },
+
+      {
+        k: 'date',
+        label: 'Report Date',
+        type: 'date',
+        req: true
+      },
+
+      {
+        k: 'progress_percentage',
+        label: 'Progress (%)',
+        type: 'number',
+        req: true
+      },
+
+      {
+        k: 'workers_present',
+        label: 'Workers Present',
+        type: 'number',
+        req: true
+      },
+
+      {
+        k: 'weather',
+        label: 'Weather',
+        type: 'text',
+        req: true
+      },
+
+      {
+        k: 'work_done',
+        label: 'Work Done',
+        type: 'text',
+        req: true
+      },
+
+      {
+        k: 'remarks',
+        label: 'Remarks',
+        type: 'text',
+        req: false
+      }
+
+    ], async data => {
+
+      console.log('DPR FORM DATA:', data);
+
+const payload = {
+  project_id: Number(data.project),
+  task: Number(data.task),
+  report_date: data.date,
+  progress_percentage: Number(data.progress_percentage),
+  workers_present: Number(data.workers_present),
+  weather: data.weather,
+  work_done: data.work_done,
+  remarks: data.remarks || ''
+};
+
+console.log('DPR PAYLOAD:', payload);
+
+try {
+  const response = await fetch(`${API_BASE}/dpr/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const result = await response.json();
+
+  console.log('DPR CREATE RESPONSE:', response.status, result);
+
+  if (!response.ok) {
+    throw new Error(
+      `CREATE DPR ${response.status}: ${JSON.stringify(result)}`
+    );
+  }
+
+ toast('Daily progress report created successfully');
+
+document.getElementById('modal-backdrop').style.display = 'none';
+
+await render();
+
+} catch (error) {
+  console.error('DPR CREATE ERROR:', error);
+  toast('Failed to create daily progress report');
+}
+
+    });
+
+  } catch (error) {
+
+    console.error('DPR FORM ERROR:', error);
+    toast('Could not load projects or tasks');
+
+  }
+}
+async function openProjectForm() {
+  try {
+    const backendSites = await getBackendSites();
+
+    if (!backendSites.length) {
+      toast("No Django sites available. Create a site first.");
+      return;
+    }
+
+    openModal(
+      "New Project",
+      [
+        {
+          k: "name",
+          label: "Project Name",
+          type: "text",
+          req: true
+        },
+        {
+          k: "description",
+          label: "Description",
+          type: "text",
+          req: true
+        },
+        {
+          k: "site",
+          label: "Site",
+          type: "select",
+          options: backendSites.map(s => ({
+            value: s.id,
+            label: `${s.site_name} — ${s.location}`
+          })),
+          req: true
+        },
+        {
+          k: "start",
+          label: "Start Date",
+          type: "date",
+          req: true
+        },
+        {
+          k: "target",
+          label: "Target End Date",
+          type: "date",
+          req: true
+        }
+      ],
+
+      async data => {
+        try {
+
+          console.log(
+            "CREATING DJANGO PROJECT:",
+            data
+          );
+
+          const newProject =
+            await createBackendProject({
+
+              project_name: data.name,
+
+              description:
+                data.description,
+
+              site:
+                Number(data.site),
+
+              start_date:
+                data.start,
+
+              end_date:
+                data.target,
+
+              status:
+                "IN_PROGRESS"
+            });
+
+          console.log(
+            "DJANGO PROJECT CREATED:",
+            newProject
+          );
+
+          toast(
+            "Project created successfully"
+          );
+
+          // Close modal if your modal system provides this
+          if (typeof closeModal === "function") {
+            closeModal();
+          }
+
+          // Immediately reload Projects from Django
+          await renderProjects();
+
+        } catch (error) {
+
+          console.error(
+            "DJANGO PROJECT CREATE ERROR:",
+            error
+          );
+
+          toast(
+            "Failed to create project"
+          );
+        }
+      }
+    );
+
+  } catch (error) {
+
+    console.error(
+      "FAILED TO LOAD SITES:",
+      error
+    );
+
+    toast(
+      "Could not load Django sites"
+    );
+  }
+}
 /* =======================================================
    SITES
 ======================================================= */
-function renderSites(){
-  const s = sheet('Execution', 'Sites', `${state.sites.length} sites`);
-  const grid = document.createElement('div');
-  grid.className = 'grid grid-3';
-  state.sites.forEach(site=>{
-    const div = document.createElement('div');
-    div.className = 'kpi';
-    div.innerHTML = `
-      <div class="flex-between"><div class="kpi-label">${site.status}</div><span class="badge badge-green" style="font-size:9px;">● live</span></div>
-      <div style="font-family:'Space Grotesk'; font-weight:700; font-size:15px; margin-top:8px; color:#fff;">${site.name}</div>
-      <div class="muted" style="font-size:11.5px; margin-top:4px;">${site.location}</div>
-      <div class="muted" style="font-size:11.5px; margin-top:2px;">Project: ${site.project}</div>
-      <div style="display:flex; gap:16px; margin-top:12px; font-family:'IBM Plex Mono'; font-size:11px;">
-        <div>👷 ${site.workers} workers</div>
-        <div>🚜 ${site.equipment} units</div>
-      </div>
-      <div class="mini-note">Supervisor: ${site.supervisor}</div>
-    `;
-    grid.appendChild(div);
-  });
-  s.appendChild(grid);
-  els.content.appendChild(s);
-}
-function openSiteForm(){
-  openModal('New Site', [
-    {k:'name', label:'Site Name', type:'text', req:true},
-    {k:'project', label:'Project', type:'select', options:state.projects.map(p=>p.name), req:true},
-    {k:'location', label:'Location', type:'text', req:true},
-    {k:'supervisor', label:'Site Supervisor', type:'text', req:true},
-  ], data=>{
-    state.sites.unshift({id:uid(), name:data.name, project:data.project, location:data.location, supervisor:data.supervisor, status:'Active', workers:0, equipment:0});
-    toast('Site added'); showView('sites');
-  });
-}
+async function renderSites() {
+  try {
 
+    // Clear the old Sites table
+    els.content.innerHTML = '';
+
+    // Get fresh data from Django
+    const backendSites = await getBackendSites();
+
+    const s = sheet(
+      'Execution',
+      'Sites',
+      `${backendSites.length} sites`
+    );
+
+    const tbl = document.createElement('table');
+
+    tbl.innerHTML = `
+      <thead>
+        <tr>
+          <th>Site</th>
+          <th>Client</th>
+          <th>Location</th>
+          <th>Start Date</th>
+          <th>Target Date</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+
+      <tbody>
+
+        ${
+          backendSites.length
+
+            ? backendSites.map(site => `
+                <tr>
+
+                  <td>
+                    <b>
+                      ${site.site_name || '—'}
+                    </b>
+                  </td>
+
+                  <td class="muted">
+                    ${site.client_name || '—'}
+                  </td>
+
+                  <td>
+                    ${site.location || '—'}
+                  </td>
+
+                  <td class="cell-mono">
+                    ${
+                      site.start_date
+                        ? fmtDate(site.start_date)
+                        : '—'
+                    }
+                  </td>
+
+                  <td class="cell-mono">
+                    ${
+                      site.end_date
+                        ? fmtDate(site.end_date)
+                        : '—'
+                    }
+                  </td>
+
+                  <td>
+                    <span class="badge ${
+                      site.status === 'COMPLETED'
+                        ? 'badge-green'
+                        : site.status === 'ONGOING'
+                          ? 'badge-blue'
+                          : 'badge-amber'
+                    }">
+                      ${site.status || '—'}
+                    </span>
+                  </td>
+
+                  <td>
+                    <button
+                      class="btn danger"
+                      style="color: black;"
+                      onclick="deleteSiteRecord(${site.id})"
+                    >
+                      Delete
+                    </button>
+                  </td>
+
+                </tr>
+              `).join('')
+
+            : `
+                <tr>
+                  <td colspan="7" class="muted">
+                    No sites found in Django.
+                  </td>
+                </tr>
+              `
+        }
+
+      </tbody>
+    `;
+
+    s.appendChild(tbl);
+    els.content.appendChild(s);
+
+  } catch (error) {
+
+    console.error(
+      'RENDER SITES ERROR:',
+      error
+    );
+
+    toast('Failed to load sites');
+  }
+}
+async function openSiteForm() {
+
+  openModal(
+    'New Site',
+    [
+      {
+        k: 'site_name',
+        label: 'Site Name',
+        type: 'text',
+        req: true
+      },
+
+      {
+        k: 'client_name',
+        label: 'Client Name',
+        type: 'text',
+        req: true
+      },
+
+      {
+        k: 'location',
+        label: 'Location',
+        type: 'text',
+        req: true
+      },
+
+      {
+        k: 'start_date',
+        label: 'Start Date',
+        type: 'date',
+        req: true
+      },
+
+      {
+        k: 'end_date',
+        label: 'Target End Date',
+        type: 'date',
+        req: true
+      },
+
+      {
+        k: 'status',
+        label: 'Status',
+        type: 'select',
+        options: [
+          {
+            value: 'PLANNED',
+            label: 'Planned'
+          },
+          {
+            value: 'ONGOING',
+            label: 'Ongoing'
+          },
+          {
+            value: 'COMPLETED',
+            label: 'Completed'
+          }
+        ],
+        req: true
+      }
+    ],
+
+    async data => {
+
+      try {
+
+        console.log(
+          'CREATING DJANGO SITE:',
+          data
+        );
+
+        const newSite =
+          await createBackendSite({
+
+            site_name:
+              data.site_name,
+
+            client_name:
+              data.client_name,
+
+            location:
+              data.location,
+
+            start_date:
+              data.start_date,
+
+            end_date:
+              data.end_date,
+
+            status:
+              data.status
+          });
+
+        console.log(
+          'DJANGO SITE CREATED:',
+          newSite
+        );
+
+        toast(
+          'Site created successfully'
+        );
+
+        // Immediately reload the Sites table
+        await renderSites();
+
+      } catch (error) {
+
+        console.error(
+          'DJANGO SITE CREATE ERROR:',
+          error
+        );
+
+        toast(
+          'Failed to create site'
+        );
+      }
+    }
+  );
+}
 /* =======================================================
    DAILY PROGRESS
 ======================================================= */
-function renderProgress(){
-  const s = sheet('Site Operations', 'Daily Progress Logs', `${state.progress.length} entries`);
+async function renderProgress() {
+  const backendDPR = await getBackendDPR();
+
+  const s = sheet(
+    'Site Operations',
+    'Daily Progress Logs',
+    `${backendDPR.length} entries`
+  );
+
   const list = document.createElement('div');
-  state.progress.slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).forEach(log=>{
-    const row = document.createElement('div');
-    row.style.cssText = 'padding:12px 0; border-bottom:1px solid var(--paper-dim);';
-    const flagged = ['unsafe','hazard','accident','fall','unguarded','loose','seepage','near-miss','injur'].some(k=>log.issues.toLowerCase().includes(k));
-    row.innerHTML = `
-      <div class="flex-between">
-        <div><b>${log.site}</b> <span class="muted cell-mono" style="font-size:11px;">· ${fmtDate(log.date)} · logged by ${log.by}</span></div>
-        ${flagged?'<span class="badge badge-red">Safety Flag</span>':'<span class="badge badge-green">Normal</span>'}
+
+  backendDPR
+    .slice()
+    .sort((a, b) =>
+      new Date(b.report_date) - new Date(a.report_date)
+    )
+    .forEach(log => {
+
+      const row = document.createElement('div');
+
+      row.style.cssText =
+        'padding:12px 0; border-bottom:1px solid var(--paper-dim);';
+
+      const remarks = log.remarks || '';
+      const activity = log.work_done || '—';
+
+      const flagged = [
+        'unsafe',
+        'hazard',
+        'accident',
+        'fall',
+        'unguarded',
+        'loose',
+        'seepage',
+        'near-miss',
+        'injur'
+      ].some(k =>
+        remarks.toLowerCase().includes(k)
+      );
+
+      row.innerHTML = `
+        <div class="flex-between">
+
+          <div>
+            <b>
+              DPR #${log.id}
+            </b>
+
+            <span
+              class="muted cell-mono"
+              style="font-size:11px;"
+            >
+              · ${fmtDate(log.report_date)}
+            </span>
+          </div>
+
+          ${
+            flagged
+              ? '<span class="badge badge-red">Safety Flag</span>'
+              : '<span class="badge badge-green">Normal</span>'
+          }
+
+        </div>
+
+        <div style="margin-top:6px; font-size:13px;">
+          ${activity}
+        </div>
+
+        <div
+          class="muted"
+          style="margin-top:5px; font-size:12px;"
+        >
+          Progress:
+          <b>${log.progress_percentage ?? 0}%</b>
+          &nbsp; · &nbsp;
+
+          Workers:
+          <b>${log.workers_present ?? 0}</b>
+          &nbsp; · &nbsp;
+
+          Weather:
+          <b>${log.weather || '—'}</b>
+        </div>
+
+        <div
+          class="muted"
+          style="margin-top:3px; font-size:12px;"
+        >
+          Remarks:
+          ${remarks || '—'}
+        </div>
+      `;
+
+      list.appendChild(row);
+    });
+
+  if (!backendDPR.length) {
+    list.innerHTML = `
+      <div class="muted" style="padding:20px 0;">
+        No Daily Progress Reports found in Django.
       </div>
-      <div style="margin-top:6px; font-size:13px;">${log.activity}</div>
-      <div class="muted" style="margin-top:3px; font-size:12px;">Issues: ${log.issues}</div>
     `;
-    list.appendChild(row);
-  });
+  }
+
   s.appendChild(list);
   els.content.appendChild(s);
 
-  const repSheet = sheet('AI Generative', 'AI Progress Report Generator', 'Auto-summarised from latest site logs');
+
+    /* ================================
+     AI PROGRESS REPORTS
+  ================================= */
+
+  const repSheet = sheet(
+    'AI Generative',
+    'AI Progress Report Generator',
+    'Auto-summarised from latest site logs'
+  );
+
   const repGrid = document.createElement('div');
   repGrid.className = 'grid grid-3';
-  state.sites.forEach(site=>{
-    const div = document.createElement('div');
-    div.className = 'ai-card risk-low';
-    div.innerHTML = `<div class="ai-card-head"><span class="ai-tag">Report</span></div>
-      <div class="ai-card-title">${site.name}</div>
-      <div class="ai-card-body" style="margin-top:6px;">${AI.generateReport(site.name)}</div>`;
-    repGrid.appendChild(div);
+
+  const projectGroups = {};
+
+  backendDPR.forEach(log => {
+    const projectName =
+      log.project_name || 'Unknown Project';
+
+    if (!projectGroups[projectName]) {
+      projectGroups[projectName] = [];
+    }
+
+    projectGroups[projectName].push(log);
   });
+
+  Object.entries(projectGroups).forEach(
+    ([projectName, logs]) => {
+
+      const div = document.createElement('div');
+
+      div.className = 'ai-card risk-low';
+
+      div.innerHTML = `
+        <div class="ai-card-head">
+          <span class="ai-tag">AI DPR REPORT</span>
+        </div>
+
+        <div class="ai-card-title">
+          ${projectName}
+        </div>
+
+        <div
+          class="ai-card-body"
+          style="margin-top:6px;"
+        >
+          ${AI.generateReportFromDPR(projectName, logs)}
+        </div>
+      `;
+
+      repGrid.appendChild(div);
+    }
+  );
+
   repSheet.appendChild(repGrid);
   els.content.appendChild(repSheet);
 }
-function openProgressForm(){
-  openModal('New Progress Log', [
-    {k:'site', label:'Site', type:'select', options:state.sites.map(s=>s.name), req:true},
-    {k:'date', label:'Date', type:'date', req:true},
-    {k:'activity', label:'Activity Summary', type:'textarea', req:true},
-    {k:'issues', label:'Issues / Site Conditions', type:'textarea'},
-    {k:'by', label:'Logged By', type:'text', req:true},
-  ], data=>{
-    state.progress.unshift({id:uid(), site:data.site, date:data.date, activity:data.activity, issues:data.issues||'None reported', by:data.by});
-    toast('Progress log submitted'); showView('progress');
+async function openTaskForm() {
+  try {
+    const backendProjects = await getBackendProjects();
+
+    if (!backendProjects.length) {
+      toast('No Django projects available. Create a project first.');
+      return;
+    }
+
+    openModal('New Task', [
+      {
+        k: 'project',
+        label: 'Project',
+        type: 'select',
+        options: backendProjects.map(project => ({
+          value: project.id,
+          label: project.project_name
+        })),
+        req: true
+      },
+      {
+        k: 'task_name',
+        label: 'Task Name',
+        type: 'text',
+        req: true
+      },
+      {
+        k: 'description',
+        label: 'Description',
+        type: 'text',
+        req: false
+      },
+      {
+        k: 'status',
+        label: 'Status',
+        type: 'select',
+        options: [
+          {
+            value: 'TODO',
+            label: 'To Do'
+          },
+          {
+            value: 'IN_PROGRESS',
+            label: 'In Progress'
+          },
+          {
+            value: 'DONE',
+            label: 'Done'
+          }
+        ],
+        req: true
+      },
+      {
+        k: 'priority',
+        label: 'Priority',
+        type: 'select',
+        options: [
+          {
+            value: 'LOW',
+            label: 'Low'
+          },
+          {
+            value: 'MEDIUM',
+            label: 'Medium'
+          },
+          {
+            value: 'HIGH',
+            label: 'High'
+          }
+        ],
+        req: true
+      },
+      {
+        k: 'due_date',
+        label: 'Due Date',
+        type: 'date',
+        req: true
+      }
+    ], async data => {
+
+      try {
+        console.log('CREATING DJANGO TASK:', data);
+
+        const newTask = await createBackendTask({
+          project: Number(data.project),
+          task_name: data.task_name,
+          description: data.description || '',
+          status: data.status,
+          priority: data.priority,
+          due_date: data.due_date
+        });
+
+        console.log('DJANGO TASK CREATED:', newTask);
+
+        toast('Task created successfully');
+
+        showView('progress');
+
+      } catch (error) {
+        console.error('DJANGO TASK CREATE ERROR:', error);
+        toast('Failed to create task');
+      }
+    });
+
+  } catch (error) {
+    console.error('FAILED TO LOAD PROJECTS FOR TASK:', error);
+    toast('Could not load projects');
+  }
+}
+async function openProgressForm() {
+  const backendTasks = await apiFetch('/tasks/');
+
+  if (!backendTasks.length) {
+  const createTask = confirm(
+    'No tasks available. Would you like to create a task first?'
+  );
+
+  if (createTask) {
+    await openTaskForm();
+  }
+
+  return;
+}
+
+  openModal('New Progress Report', [
+    {
+      k: 'task',
+      label: 'Task',
+      type: 'select',
+      options: backendTasks.map(t => ({
+        value: t.id,
+        label: t.name || t.task_name || `Task #${t.id}`
+      })),
+      req: true
+    },
+    {
+      k: 'date',
+      label: 'Report Date',
+      type: 'date',
+      req: true
+    },
+    {
+      k: 'work_done',
+      label: 'Work Done',
+      type: 'textarea',
+      req: true
+    },
+    {
+      k: 'progress_percentage',
+      label: 'Progress (%)',
+      type: 'number',
+      req: true
+    },
+    {
+      k: 'workers_present',
+      label: 'Workers Present',
+      type: 'number',
+      req: true
+    },
+    {
+      k: 'weather',
+      label: 'Weather',
+      type: 'select',
+      options: [
+        'SUNNY',
+        'CLOUDY',
+        'RAINY'
+      ],
+      req: true
+    },
+    {
+      k: 'remarks',
+      label: 'Remarks',
+      type: 'textarea'
+    }
+  ], async data => {
+
+    try {
+      console.log('CREATING DJANGO DPR:', data);
+
+      const response = await fetch(`${API_BASE}/dpr/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({
+          task: Number(data.task),
+          report_date: data.date,
+          work_done: data.work_done,
+          progress_percentage: Number(data.progress_percentage),
+          workers_present: Number(data.workers_present),
+          weather: data.weather,
+          remarks: data.remarks || ''
+        })
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`CREATE DPR ${response.status}: ${text}`);
+      }
+
+      const newDPR = await response.json();
+
+      console.log('DJANGO DPR CREATED:', newDPR);
+
+      toast('Daily Progress Report created in Django');
+
+      showView('progress');
+
+    } catch (error) {
+      console.error('DJANGO DPR CREATE ERROR:', error);
+      toast('Failed to create progress report');
+    }
   });
 }
 
 /* =======================================================
    MATERIALS
 ======================================================= */
-function renderMaterials(){
-  const s = sheet('Resources', 'Material Stock', `${state.materials.length} items tracked`);
-  const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th>Item</th><th>Site</th><th>Quantity</th><th>Threshold</th><th>Rate</th><th>Status</th></tr></thead>
-    <tbody>${state.materials.map(m=>{
-      const low = m.qty <= m.threshold;
-      return `<tr>
-        <td><b>${m.item}</b></td>
-        <td class="muted">${m.site}</td>
-        <td class="cell-mono">${m.qty} ${m.unit}</td>
-        <td class="cell-mono muted">${m.threshold} ${m.unit}</td>
-        <td class="cell-mono">${fmtMoney(m.rate)}</td>
-        <td>${low?'<span class="badge badge-red">Reorder</span>':'<span class="badge badge-green">Adequate</span>'}</td>
-      </tr>`;
-    }).join('')}</tbody>`;
-  s.appendChild(tbl);
-  els.content.appendChild(s);
-}
-function openMaterialForm(){
-  openModal('New Material Item', [
-    {k:'item', label:'Material', type:'text', req:true},
-    {k:'site', label:'Site', type:'select', options:state.sites.map(s=>s.name), req:true},
-    {k:'unit', label:'Unit', type:'text', req:true},
-    {k:'qty', label:'Current Quantity', type:'number', req:true},
-    {k:'threshold', label:'Reorder Threshold', type:'number', req:true},
-    {k:'rate', label:'Rate per Unit (₹)', type:'number', req:true},
-  ], data=>{
-    state.materials.unshift({id:uid(), item:data.item, site:data.site, unit:data.unit, qty:Number(data.qty), threshold:Number(data.threshold), rate:Number(data.rate)});
-    toast('Material item added'); showView('materials');
-  });
-}
+async function renderMaterials() {
+  try {
+    els.content.innerHTML = '';
 
+    const backendMaterials = await getBackendMaterials();
+    const backendProjects = await getBackendProjects();
+
+    const projectMap = Object.fromEntries(
+      backendProjects.map(project => [
+        project.id,
+        project.project_name
+      ])
+    );
+
+    const s = sheet(
+      'Resources',
+      'Material Stock',
+      `${backendMaterials.length} items tracked`
+    );
+
+    const tbl = document.createElement('table');
+
+    tbl.innerHTML = `
+      <thead>
+        <tr>
+          <th>Material</th>
+          <th>Project</th>
+          <th>Quantity</th>
+          <th>Minimum Stock</th>
+          <th>Unit</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        ${
+          backendMaterials.length
+            ? backendMaterials.map(m => {
+
+                const qty = Number(m.quantity || 0);
+                const minimumStock = Number(m.minimum_stock || 0);
+                const low = qty <= minimumStock;
+
+                return `
+                  <tr>
+
+                    <td>
+                      <b>${m.material_name || '—'}</b>
+                    </td>
+
+                    <td class="muted">
+                      ${
+                        projectMap[m.project]
+                        || `Project #${m.project || '—'}`
+                      }
+                    </td>
+
+                    <td class="cell-mono">
+                      ${qty}
+                    </td>
+
+                    <td class="cell-mono muted">
+                      ${minimumStock}
+                    </td>
+
+                    <td class="cell-mono">
+                      ${m.unit || '—'}
+                    </td>
+
+                    <td>
+                      ${
+                        low
+                          ? `<span class="status-badge danger">LOW STOCK</span>`
+                          : `<span class="status-badge success">ADEQUATE</span>`
+                      }
+                    </td>
+
+                    <td>
+                      <button
+                        class="btn danger"
+                        onclick="deleteMaterialRecord(${m.id})"
+                      >
+                        Delete
+                      </button>
+                    </td>
+
+                  </tr>
+                `;
+              }).join('')
+
+            : `
+              <tr>
+                <td colspan="7" class="muted">
+                  No material records found in Django.
+                </td>
+              </tr>
+            `
+        }
+      </tbody>
+    `;
+
+    s.appendChild(tbl);
+    els.content.appendChild(s);
+
+  } catch (error) {
+
+    console.error('RENDER MATERIALS ERROR:', error);
+
+    toast('Failed to load materials');
+  }
+}
+async function openMaterialForm() {
+  try {
+    const backendProjects = await getBackendProjects();
+
+    if (!backendProjects.length) {
+      toast('No Django projects available. Create a project first.');
+      return;
+    }
+
+    openModal('New Material Item', [
+      {
+        k: 'material_name',
+        label: 'Material',
+        type: 'text',
+        req: true
+      },
+      {
+        k: 'project',
+        label: 'Project',
+        type: 'select',
+        options: backendProjects.map(project => ({
+          value: project.id,
+          label: project.project_name
+        })),
+        req: true
+      },
+      {
+        k: 'unit',
+        label: 'Unit',
+        type: 'select',
+        options: [
+          { value: 'KG', label: 'Kilogram' },
+          { value: 'TON', label: 'Ton' },
+          { value: 'BAG', label: 'Bag' },
+          { value: 'M3', label: 'Cubic Meter' },
+          { value: 'LITRE', label: 'Litre' },
+          { value: 'PIECE', label: 'Piece' }
+        ],
+        req: true
+      },
+      {
+        k: 'quantity',
+        label: 'Current Quantity',
+        type: 'number',
+        req: true
+      },
+      {
+        k: 'minimum_stock',
+        label: 'Minimum Stock',
+        type: 'number',
+        req: true
+      }
+    ], async data => {
+
+      try {
+        console.log('CREATING DJANGO MATERIAL:', data);
+
+        const newMaterial = await createBackendMaterial({
+          project: Number(data.project),
+          material_name: data.material_name,
+          quantity: Number(data.quantity),
+          unit: data.unit,
+          minimum_stock: Number(data.minimum_stock)
+        });
+
+        console.log('DJANGO MATERIAL CREATED:', newMaterial);
+
+        toast('Material created successfully');
+
+        await renderMaterials();
+
+      } catch (error) {
+        console.error('DJANGO MATERIAL CREATE ERROR:', error);
+        toast('Failed to create material');
+      }
+    });
+
+  } catch (error) {
+    console.error('FAILED TO LOAD MATERIAL PROJECTS:', error);
+    toast('Could not load Django projects');
+  }
+}
 /* =======================================================
    LABOUR
 ======================================================= */
-function renderLabour(){
-  const s = sheet('Resources', 'Labour Records', `${state.labour.length} workers`);
-  const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th>Worker</th><th>Role</th><th>Site</th><th>Daily Rate</th><th>Attendance</th></tr></thead>
-    <tbody>${state.labour.map(l=>{
-      const pct = Math.round(l.attendance/l.days*100);
-      return `<tr>
-        <td><b>${l.name}</b></td>
-        <td>${l.role}</td>
-        <td class="muted">${l.site}</td>
-        <td class="cell-mono">${fmtMoney(l.rate)}/day</td>
-        <td style="min-width:130px;">
-          <div class="progress-track"><div class="progress-fill ${pct<80?'red':'green'}" style="width:${pct}%"></div></div>
-          <span class="cell-mono" style="font-size:10.5px;">${l.attendance}/${l.days} days (${pct}%)</span>
-        </td>
-      </tr>`;
-    }).join('')}</tbody>`;
-  s.appendChild(tbl);
-  els.content.appendChild(s);
+async function renderLabour() {
+  try {
+    const [backendLabour, backendSites, backendTasks] = await Promise.all([
+      getBackendLabour(),
+      getBackendSites(),
+      getBackendTasks()
+    ]);
+
+    const siteMap = Object.fromEntries(
+      backendSites.map(site => [
+        site.id,
+        site.site_name
+      ])
+    );
+
+    const taskMap = Object.fromEntries(
+      backendTasks.map(task => [
+        task.id,
+        task.task_name
+      ])
+    );
+
+    const s = sheet(
+      'Resources',
+      'Labour Records',
+      `${backendLabour.length} workers`
+    );
+
+    const tbl = document.createElement('table');
+
+    tbl.innerHTML = `
+      <thead>
+        <tr>
+          <th>Worker</th>
+          <th>Role</th>
+          <th>Site</th>
+          <th>Task</th>
+          <th>Date</th>
+          <th>Hours</th>
+          <th>Daily Rate</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        ${
+          backendLabour.length
+            ? backendLabour.map(l => `
+                <tr>
+                  <td>
+                    <b>${l.worker_name}</b>
+                  </td>
+
+                  <td>
+                    ${l.role}
+                  </td>
+
+                  <td>
+                    ${siteMap[l.site] || `Site #${l.site}`}
+                  </td>
+
+                  <td>
+                    ${taskMap[l.task] || `Task #${l.task}`}
+                  </td>
+
+                  <td class="cell-mono">
+                    ${fmtDate(l.attendance_date)}
+                  </td>
+
+                  <td class="cell-mono">
+                    ${l.hours_worked}
+                  </td>
+
+                  <td class="cell-mono">
+                    ${fmtMoney(Number(l.daily_rate))}/day
+                  </td>
+
+                  <td>
+                    <button
+                      class="btn danger"
+                      onclick="deleteLabourRecord(${l.id})"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              `).join('')
+            : `
+                <tr>
+                  <td colspan="8" class="muted">
+                    No labour records found in Django.
+                  </td>
+                </tr>
+              `
+        }
+      </tbody>
+    `;
+
+    s.appendChild(tbl);
+    els.content.appendChild(s);
+
+  } catch (error) {
+    console.error('RENDER LABOUR ERROR:', error);
+    toast('Failed to load labour records');
+  }
 }
-function openLabourForm(){
-  openModal('New Labour Record', [
-    {k:'name', label:'Worker Name', type:'text', req:true},
-    {k:'role', label:'Role', type:'text', req:true},
-    {k:'site', label:'Site', type:'select', options:state.sites.map(s=>s.name), req:true},
-    {k:'rate', label:'Daily Rate (₹)', type:'number', req:true},
-  ], data=>{
-    state.labour.unshift({id:uid(), name:data.name, role:data.role, site:data.site, rate:Number(data.rate), attendance:0, days:28});
-    toast('Labour record added'); showView('labour');
-  });
+async function deleteLabourRecord(id) {
+  if (!confirm(`Delete Labour Record #${id}?`)) {
+    return;
+  }
+
+  try {
+    await deleteBackendLabour(id);
+
+    toast('Labour record deleted');
+
+    showView('labour');
+
+  } catch (error) {
+    console.error('DELETE LABOUR ERROR:', error);
+
+    toast('Failed to delete labour record');
+  }
+}
+async function openLabourForm() {
+  try {
+    const [backendSites, backendTasks] = await Promise.all([
+      getBackendSites(),
+      getBackendTasks()
+    ]);
+
+    if (!backendSites.length) {
+      toast('No Django sites available. Create a site first.');
+      return;
+    }
+
+    if (!backendTasks.length) {
+      toast('No Django tasks available. Create a task first.');
+      return;
+    }
+
+    openModal('New Labour Record', [
+      {
+        k: 'worker_name',
+        label: 'Worker Name',
+        type: 'text',
+        req: true
+      },
+      {
+        k: 'role',
+        label: 'Role',
+        type: 'text',
+        req: true
+      },
+      {
+        k: 'site',
+        label: 'Site',
+        type: 'select',
+        options: backendSites.map(site => ({
+          value: site.id,
+          label: `${site.site_name} — ${site.location}`
+        })),
+        req: true
+      },
+      {
+        k: 'task',
+        label: 'Task',
+        type: 'select',
+        options: backendTasks.map(task => ({
+          value: task.id,
+          label: task.task_name
+        })),
+        req: true
+      },
+      {
+        k: 'attendance_date',
+        label: 'Attendance Date',
+        type: 'date',
+        req: true
+      },
+      {
+        k: 'hours_worked',
+        label: 'Hours Worked',
+        type: 'number',
+        req: true
+      },
+      {
+        k: 'daily_rate',
+        label: 'Daily Rate (₹)',
+        type: 'number',
+        req: true
+      }
+    ], async data => {
+
+      try {
+        console.log('CREATING DJANGO LABOUR:', data);
+
+        const newLabour = await createBackendLabour({
+          worker_name: data.worker_name,
+          role: data.role,
+          site: Number(data.site),
+          task: Number(data.task),
+          attendance_date: data.attendance_date,
+          hours_worked: Number(data.hours_worked),
+          daily_rate: Number(data.daily_rate)
+        });
+
+        console.log('DJANGO LABOUR CREATED:', newLabour);
+
+        toast('Labour record added to Django');
+
+        showView('labour');
+
+      } catch (error) {
+        console.error('DJANGO LABOUR CREATE ERROR:', error);
+        toast('Failed to create labour record');
+      }
+    });
+
+  } catch (error) {
+    console.error('FAILED TO LOAD LABOUR FORM DATA:', error);
+    toast('Could not load sites/tasks');
+  }
 }
 
 /* =======================================================
    EQUIPMENT
 ======================================================= */
-function renderEquipment(){
-  const s = sheet('Resources', 'Equipment Tracking', `${state.equipment.length} units`);
-  const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th>Equipment</th><th>Type</th><th>Assigned Site</th><th>Status</th></tr></thead>
-    <tbody>${state.equipment.map(e=>`
-      <tr>
-        <td><b>${e.name}</b></td>
-        <td>${e.type}</td>
-        <td class="muted">${e.site}</td>
-        <td><span class="badge ${e.status==='In Use'?'badge-green':e.status==='Idle'?'badge-gray':'badge-amber'}">${e.status}</span></td>
-      </tr>`).join('')}</tbody>`;
-  s.appendChild(tbl);
-  els.content.appendChild(s);
+async function renderEquipment() {
+  try {
+    const [backendEquipment, backendSites] = await Promise.all([
+      getBackendEquipment(),
+      getBackendSites()
+    ]);
+
+    const siteMap = Object.fromEntries(
+      backendSites.map(site => [
+        site.id,
+        site.site_name
+      ])
+    );
+
+    const s = sheet(
+      'Resources',
+      'Equipment Tracking',
+      `${backendEquipment.length} units`
+    );
+
+    const tbl = document.createElement('table');
+
+    tbl.innerHTML = `
+      <thead>
+        <tr>
+          <th>Equipment</th>
+          <th>Type</th>
+          <th>Assigned Site</th>
+          <th>Status</th>
+          <th>Operator</th>
+          <th>Daily Cost</th>
+          <th>Last Maintenance</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        ${
+          backendEquipment.length
+            ? backendEquipment.map(e => `
+                <tr>
+                  <td>
+                    <b>${e.equipment_name || '—'}</b>
+                  </td>
+
+                  <td>
+                    ${e.equipment_type || '—'}
+                  </td>
+
+                  <td class="muted">
+                    ${
+                      siteMap[e.site]
+                      || `Site #${e.site || '—'}`
+                    }
+                  </td>
+
+                  <td>
+                    <span class="badge ${
+                      e.status === 'IN_USE'
+                        ? 'badge-green'
+                        : e.status === 'AVAILABLE'
+                          ? 'badge-gray'
+                          : 'badge-amber'
+                    }">
+                      ${e.status || '—'}
+                    </span>
+                  </td>
+
+                  <td>
+                    ${e.operator_name || '—'}
+                  </td>
+
+                  <td class="cell-mono">
+                    ${fmtMoney(Number(e.daily_cost || 0))}/day
+                  </td>
+
+                  <td class="cell-mono">
+                    ${
+                      e.last_maintenance
+                        ? fmtDate(e.last_maintenance)
+                        : '—'
+                    }
+                  </td>
+
+                  <td>
+                    <button
+                      class="btn"
+                      style="background:#000;color:#fff;border:1px solid #000;"
+                      onclick="deleteEquipmentRecord(${e.id})"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              `).join('')
+            : `
+                <tr>
+                  <td colspan="8" class="muted">
+                    No equipment found in Django.
+                  </td>
+                </tr>
+              `
+        }
+      </tbody>
+    `;
+
+    s.appendChild(tbl);
+    els.content.appendChild(s);
+
+  } catch (error) {
+    console.error('RENDER EQUIPMENT ERROR:', error);
+    toast('Failed to load equipment');
+  }
 }
-function openEquipmentForm(){
-  openModal('New Equipment Item', [
-    {k:'name', label:'Equipment Name / ID', type:'text', req:true},
-    {k:'type', label:'Type', type:'text', req:true},
-    {k:'site', label:'Assigned Site', type:'select', options:state.sites.map(s=>s.name), req:true},
-  ], data=>{
-    state.equipment.unshift({id:uid(), name:data.name, type:data.type, site:data.site, status:'Idle'});
-    toast('Equipment added'); showView('equipment');
-  });
+async function openContractorForm() {
+  try {
+    const backendSites = await getBackendSites();
+
+    if (!backendSites.length) {
+      toast('No Django sites available. Create a site first.');
+      return;
+    }
+
+    openModal('New Contractor', [
+      {
+        k: 'contractor_name',
+        label: 'Contractor Name',
+        type: 'text',
+        req: true
+      },
+      {
+        k: 'company_name',
+        label: 'Company Name',
+        type: 'text',
+        req: true
+      },
+      {
+        k: 'phone',
+        label: 'Phone',
+        type: 'text',
+        req: true
+      },
+      {
+        k: 'email',
+        label: 'Email',
+        type: 'email',
+       
+        req: false
+      },
+      {
+        k: 'contract_value',
+        label: 'Contract Value (₹)',
+        type: 'number',
+        req: true
+      },
+      {
+        k: 'site',
+        label: 'Site',
+        type: 'select',
+        options: backendSites.map(site => ({
+          value: site.id,
+          label: site.site_name || `Site #${site.id}`
+        })),
+        req: true
+      },
+      {
+        k: 'start_date',
+        label: 'Start Date',
+        type: 'date',
+        req: true
+      },
+      {
+        k: 'end_date',
+        label: 'End Date',
+        type: 'date',
+        req: false
+      }
+    ], async data => {
+
+      try {
+        const payload = {
+          contractor_name: data.contractor_name,
+          company_name: data.company_name,
+          phone: data.phone,
+          email: data.email || '',
+          contract_value: Number(data.contract_value),
+          start_date: data.start_date,
+          end_date: data.end_date || null,
+          site: Number(data.site)
+        };
+
+        console.log('CONTRACTOR PAYLOAD:', payload);
+
+        const response = await fetch(`${API_BASE}/contractors/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+
+        console.log('CONTRACTOR RESPONSE:', response.status, result);
+
+        if (!response.ok) {
+  throw new Error(
+    `CREATE CONTRACTOR ${response.status}: ${JSON.stringify(result)}`
+  );
+}
+
+console.log('CONTRACTOR CREATED:', result);
+
+toast('Contractor created successfully');
+
+closeModal();
+
+await renderContractors();
+
+      } catch (error) {
+        console.error('CONTRACTOR CREATE ERROR:', error);
+        toast('Failed to create contractor');
+      }
+    });
+
+  } catch (error) {
+    console.error('CONTRACTOR FORM ERROR:', error);
+    toast('Could not load sites');
+  }
+}
+async function openEquipmentForm() {
+  try {
+    const backendSites = await getBackendSites();
+
+    if (!backendSites.length) {
+      toast('No Django sites available. Create a site first.');
+      return;
+    }
+
+    openModal('New Equipment Item', [
+      {
+        k: 'equipment_name',
+        label: 'Equipment Name / ID',
+        type: 'text',
+        req: true
+      },
+      {
+        k: 'equipment_type',
+        label: 'Equipment Type',
+        type: 'text',
+        req: true
+      },
+      {
+        k: 'site',
+        label: 'Assigned Site',
+        type: 'select',
+        options: backendSites.map(site => ({
+          value: site.id,
+          label: `${site.site_name} — ${site.location}`
+        })),
+        req: true
+      },
+      {
+        k: 'status',
+        label: 'Status',
+        type: 'select',
+        options: [
+          { value: 'AVAILABLE', label: 'Available' },
+          { value: 'IN_USE', label: 'In Use' },
+          { value: 'MAINTENANCE', label: 'Maintenance' }
+        ],
+        req: true
+      },
+      {
+        k: 'operator_name',
+        label: 'Operator Name',
+        type: 'text',
+        req: false
+      },
+      {
+        k: 'daily_cost',
+        label: 'Daily Cost (₹)',
+        type: 'number',
+        req: true
+      },
+      {
+        k: 'last_maintenance',
+        label: 'Last Maintenance',
+        type: 'date',
+        req: false
+      }
+    ], async data => {
+
+      try {
+        console.log('CREATING DJANGO EQUIPMENT:', data);
+
+        const newEquipment = await createBackendEquipment({
+          equipment_name: data.equipment_name,
+          equipment_type: data.equipment_type,
+          site: Number(data.site),
+          status: data.status,
+          operator_name: data.operator_name || '',
+          daily_cost: Number(data.daily_cost),
+          last_maintenance: data.last_maintenance || null
+        });
+
+        console.log('DJANGO EQUIPMENT CREATED:', newEquipment);
+
+        toast('Equipment added to Django');
+
+        // Automatically reload from Django
+        await showView('equipment');
+
+      } catch (error) {
+        console.error('DJANGO EQUIPMENT CREATE ERROR:', error);
+        toast('Failed to create equipment');
+      }
+    });
+
+  } catch (error) {
+    console.error('FAILED TO LOAD EQUIPMENT FORM DATA:', error);
+    toast('Could not load sites');
+  }
 }
 
 /* =======================================================
    BILLING
 ======================================================= */
-function renderBilling(){
-  const s = sheet('Finance', 'Invoices', `${state.invoices.length} invoices`);
+async function renderBilling() {
+
+  els.content.innerHTML = '';
+
+  const [backendBilling, projects, contractors] = await Promise.all([
+    getBackendBilling(),
+    getBackendProjects(),
+    getBackendContractors()
+  ]);
+
+  const projectMap = Object.fromEntries(
+    projects.map(p => [p.id, p.project_name])
+  );
+
+  const contractorMap = Object.fromEntries(
+    contractors.map(c => [c.id, c.contractor_name])
+  );
+
+  const s = sheet(
+    'Finance',
+    'Invoices',
+    `${backendBilling.length} invoices`
+  );
+
   const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th>Invoice #</th><th>Project</th><th>Client</th><th>Amount</th><th>Date</th><th>Status</th></tr></thead>
-    <tbody>${state.invoices.map(i=>`
+
+  tbl.innerHTML = `
+    <thead>
       <tr>
-        <td class="cell-mono">${i.num}</td>
-        <td>${i.project}</td>
-        <td class="muted">${i.client}</td>
-        <td class="cell-mono">${fmtMoney(i.amount)}</td>
-        <td class="cell-mono">${fmtDate(i.date)}</td>
-        <td><span class="badge ${i.status==='Paid'?'badge-green':i.status==='Overdue'?'badge-red':'badge-amber'}">${i.status}</span></td>
-      </tr>`).join('')}</tbody>`;
+        <th>Invoice #</th>
+        <th>Project</th>
+        <th>Contractor</th>
+        <th>Amount</th>
+        <th>Date</th>
+        <th>Status</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      ${
+        backendBilling.length
+          ? backendBilling.map(b => `
+              <tr>
+
+                <td class="cell-mono">
+                  <b>${b.invoice_number || '—'}</b>
+                </td>
+
+                <td>
+                  ${projectMap[b.project] || `Project #${b.project}`}
+                </td>
+
+                <td class="muted">
+                  ${contractorMap[b.contractor] || `Contractor #${b.contractor}`}
+                </td>
+
+                <td class="cell-mono">
+                  ${fmtMoney(Number(b.amount || 0))}
+                </td>
+
+                <td class="cell-mono">
+                  ${fmtDate(b.invoice_date)}
+                </td>
+
+                <td>
+                  <span class="badge ${
+                    b.status === 'PAID'
+                      ? 'badge-green'
+                      : b.status === 'PARTIAL'
+                        ? 'badge-amber'
+                        : 'badge-blue'
+                  }">
+                    ${b.status || '—'}
+                  </span>
+                </td>
+
+                <td>
+                  <button
+                    class="btn danger"
+                    style="color: black;"
+                    onclick="deleteBillingRecord(${b.id})"
+                  >
+                    Delete
+                  </button>
+                </td>
+
+              </tr>
+            `).join('')
+          : `
+              <tr>
+                <td colspan="7" class="muted">
+                  No billing records found in Django.
+                </td>
+              </tr>
+            `
+      }
+    </tbody>
+  `;
+
   s.appendChild(tbl);
   els.content.appendChild(s);
 }
-function openInvoiceForm(){
-  openModal('New Invoice', [
-    {k:'num', label:'Invoice Number', type:'text', req:true},
-    {k:'project', label:'Project', type:'select', options:state.projects.map(p=>p.name), req:true},
-    {k:'client', label:'Client', type:'select', options:state.clients.map(c=>c.name), req:true},
-    {k:'amount', label:'Amount (₹)', type:'number', req:true},
-    {k:'date', label:'Date', type:'date', req:true},
-  ], data=>{
-    state.invoices.unshift({id:uid(), num:data.num, project:data.project, client:data.client, amount:Number(data.amount), date:data.date, status:'Pending'});
-    toast('Invoice created'); showView('billing');
+async function renderPayments() {
+
+  const backendPayments = await getBackendPayments();
+
+  const s = sheet(
+    'Finance',
+    'Payment Records',
+    `${backendPayments.length} transactions`
+  );
+
+  const tbl = document.createElement('table');
+
+  tbl.innerHTML = `
+    <thead>
+      <tr>
+        <th>Reference</th>
+        <th>Bill</th>
+        <th>Amount</th>
+        <th>Method</th>
+        <th>Date</th>
+        <th>Remarks</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      ${
+        backendPayments.length
+          ? backendPayments.map(p => `
+              <tr>
+
+                <td class="cell-mono">
+                  ${p.reference_number || '—'}
+                </td>
+
+                <td>
+                  ${p.bill || '—'}
+                </td>
+
+                <td class="cell-mono">
+                  ${fmtMoney(Number(p.amount || 0))}
+                </td>
+
+                <td>
+                  ${p.payment_method || '—'}
+                </td>
+
+                <td class="cell-mono">
+                  ${fmtDate(p.payment_date)}
+                </td>
+
+                <td class="muted">
+                  ${p.remarks || '—'}
+                </td>
+
+                <td>
+                  <button
+                    class="btn danger"
+                    style="color: black;"
+                    onclick="deletePaymentRecord(${p.id})"
+                  >
+                    Delete
+                  </button>
+                </td>
+
+              </tr>
+            `).join('')
+          : `
+              <tr>
+                <td colspan="7" class="muted">
+                  No payments found in Django.
+                </td>
+              </tr>
+            `
+      }
+    </tbody>
+  `;
+
+  s.appendChild(tbl);
+  els.content.appendChild(s);
+}
+async function deleteBackendPayment(id) {
+  const token = localStorage.getItem('access_token') || '';
+
+  const response = await fetch(`${API_BASE}/payments/${id}/`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
   });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`DELETE PAYMENT ${response.status}: ${text}`);
+  }
+
+  return true;
 }
 
-/* =======================================================
-   PAYMENTS
-======================================================= */
-function renderPayments(){
-  const s = sheet('Finance', 'Payment Records', `${state.payments.length} transactions`);
-  const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th>Reference</th><th>To / From</th><th>Type</th><th>Amount</th><th>Method</th><th>Date</th><th>Status</th></tr></thead>
-    <tbody>${state.payments.map(p=>`
-      <tr>
-        <td class="cell-mono">${p.ref}</td>
-        <td>${p.to}</td>
-        <td class="muted">${p.type}</td>
-        <td class="cell-mono">${fmtMoney(p.amount)}</td>
-        <td>${p.method}</td>
-        <td class="cell-mono">${fmtDate(p.date)}</td>
-        <td><span class="badge ${p.status==='Completed'?'badge-green':'badge-amber'}">${p.status}</span></td>
-      </tr>`).join('')}</tbody>`;
-  s.appendChild(tbl);
-  els.content.appendChild(s);
+
+async function deletePaymentRecord(id) {
+  if (!confirm('Delete this payment record?')) return;
+
+  try {
+    await deleteBackendPayment(id);
+
+    toast('Payment record deleted');
+
+    // Refresh the Payments screen
+    showView('payments');
+
+  } catch (error) {
+    console.error('DELETE PAYMENT ERROR:', error);
+    toast('Failed to delete payment record');
+  }
 }
-function openPaymentForm(){
-  openModal('New Payment', [
-    {k:'ref', label:'Reference No.', type:'text', req:true},
-    {k:'to', label:'Paid To / Received From', type:'text', req:true},
-    {k:'type', label:'Type', type:'select', options:['Contractor','Client Receipt','Supplier','Other'], req:true},
-    {k:'amount', label:'Amount (₹)', type:'number', req:true},
-    {k:'method', label:'Method', type:'select', options:['Bank Transfer','RTGS','UPI','Cheque','Cash']},
-    {k:'date', label:'Date', type:'date', req:true},
-  ], data=>{
-    state.payments.unshift({id:uid(), ref:data.ref, to:data.to, type:data.type, amount:Number(data.amount), method:data.method||'Bank Transfer', date:data.date, status:'Pending'});
-    toast('Payment recorded'); showView('payments');
-  });
+async function openPaymentForm() {
+  try {
+    const bills = await getBackendBilling();
+
+    if (!bills.length) {
+      toast('No bills available. Create a bill first.');
+      return;
+    }
+
+    openModal('New Payment', [
+      {
+        k: 'bill',
+        label: 'Bill / Invoice',
+        type: 'select',
+        options: bills.map(b => ({
+          value: b.id,
+          label: `${b.invoice_number} — ₹${Number(b.amount).toLocaleString('en-IN')} — ${b.status}`
+        })),
+        req: true
+      },
+
+      {
+        k: 'payment_date',
+        label: 'Payment Date',
+        type: 'date',
+        req: true
+      },
+
+      {
+        k: 'amount',
+        label: 'Amount (₹)',
+        type: 'number',
+        req: true
+      },
+
+      {
+        k: 'payment_method',
+        label: 'Payment Method',
+        type: 'select',
+        options: [
+          { value: 'CASH', label: 'Cash' },
+          { value: 'BANK', label: 'Bank Transfer' },
+          { value: 'UPI', label: 'UPI' },
+          { value: 'CHEQUE', label: 'Cheque' }
+        ],
+        req: true
+      },
+
+      {
+        k: 'reference_number',
+        label: 'Reference Number',
+        type: 'text',
+        req: true
+      },
+
+      {
+        k: 'remarks',
+        label: 'Remarks',
+        type: 'textarea'
+      }
+
+    ], async data => {
+
+      try {
+
+        const payment = await createBackendPayment({
+          bill: Number(data.bill),
+          payment_date: data.payment_date,
+          amount: Number(data.amount),
+          payment_method: data.payment_method,
+          reference_number: data.reference_number,
+          remarks: data.remarks || ''
+        });
+
+        console.log('CREATED PAYMENT:', payment);
+
+        toast('Payment recorded in Django');
+        showView('payments');
+
+      } catch (error) {
+
+        console.error('PAYMENT ERROR:', error);
+        toast('Payment could not be recorded');
+
+      }
+
+    });
+
+  } catch (error) {
+
+    console.error('PAYMENT FORM ERROR:', error);
+    toast('Could not load bills');
+
+  }
 }
 
 /* =======================================================
@@ -1155,7 +4646,12 @@ function openModal(title, fields, onSubmit){
           <label>${f.label}${f.req?' *':''}</label>
           ${f.type==='select' ? `<select name="${f.k}" ${f.req?'required':''}>
               <option value="">Select…</option>
-              ${(f.options||[]).map(o=>`<option value="${o}">${o}</option>`).join('')}
+              ${(f.options||[]).map(o => {
+  if (typeof o === 'object') {
+    return `<option value="${o.value}">${o.label}</option>`;
+  }
+  return `<option value="${o}">${o}</option>`;
+}).join('')}
             </select>`
           : f.type==='textarea' ? `<textarea name="${f.k}" ${f.req?'required':''}></textarea>`
           : `<input type="${f.type}" name="${f.k}" ${f.req?'required':''}>`}
@@ -1183,6 +4679,7 @@ function openModal(title, fields, onSubmit){
 
 /* init */
 showView('dashboard');
+
 </script>
 </body>
 </html>
