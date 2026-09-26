@@ -399,6 +399,47 @@
 </head>
 <body>
 
+<div id="login-screen" style="display:none; min-height:100vh; align-items:center; justify-content:center; background:var(--ink);">
+  <div style="width:360px; padding:32px; border:1px solid var(--line); background:var(--panel);">
+    <div style="margin-bottom:24px;">
+      <div style="font-size:22px; font-weight:700;">Site Intelligence</div>
+      <div style="font-size:12px; opacity:.6; margin-top:4px;">AI Construction CRM</div>
+    </div>
+
+    <form id="login-form">
+      <div style="margin-bottom:14px;">
+        <label>Username</label>
+        <input
+          type="text"
+          id="login-username"
+          required
+          autocomplete="username"
+          style="width:100%; margin-top:6px;"
+        >
+      </div>
+
+      <div style="margin-bottom:18px;">
+        <label>Password</label>
+        <input
+          type="password"
+          id="login-password"
+          required
+          autocomplete="current-password"
+          style="width:100%; margin-top:6px;"
+        >
+      </div>
+
+      <div id="login-error" style="display:none; margin-bottom:14px; color:#ff6a3d; font-size:12px;"></div>
+
+      <button type="submit" class="btn btn-primary" style="width:100%;">
+        Login
+      </button>
+    </form>
+  </div>
+</div>
+
+<div id="app">
+
 <div id="app">
   <aside id="sidebar">
     <div class="brand">
@@ -505,19 +546,23 @@
 const uid = (() => { let n = 1000; return () => 'ID-' + (n++); })();
 const API_BASE = 'http://127.0.0.1:8001/api';
 let accessToken = localStorage.getItem('access_token') || '';
-async function apiFetch(endpoint) {
+async function apiFetch(endpoint, options = {}) {
   const response = await fetch(`${API_BASE}${endpoint}`, {
-    method: 'GET',
+    method: options.method || 'GET',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`
-    }
+      ...(accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {}),
+      ...(options.headers || {})
+    },
+    ...(options.body ? { body: JSON.stringify(options.body) } : {})
   });
 
   if (!response.ok) {
     const text = await response.text();
     throw new Error(`API ${response.status}: ${text}`);
   }
+
+  if (response.status === 204) return null;
 
   return await response.json();
 }
@@ -1198,9 +1243,63 @@ function openModal(title, fields, onSubmit){
     close();
   };
 }
+const loginScreen = document.getElementById('login-screen');
+const app = document.getElementById('app');
+const loginForm = document.getElementById('login-form');
+const loginError = document.getElementById('login-error');
+
+function showLogin() {
+  loginScreen.style.display = 'flex';
+  app.style.display = 'none';
+}
+
+function showApp() {
+  loginScreen.style.display = 'none';
+  app.style.display = '';
+}
+
+loginForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+
+  loginError.style.display = 'none';
+
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
+
+  try {
+    const loginResponse = await apiFetch('/login/', {
+      method: 'POST',
+      body: {
+        username,
+        password
+      }
+    });
+
+    accessToken = loginResponse.access;
+    localStorage.setItem('access_token', accessToken);
+    localStorage.setItem('refresh_token', loginResponse.refresh);
+
+    const profile = await apiFetch('/profile/');
+    localStorage.setItem('user_profile', JSON.stringify(profile));
+
+    showApp();
+    showView('dashboard');
+
+  } catch (error) {
+    console.error(error);
+    loginError.textContent = 'Invalid username or password.';
+    loginError.style.display = 'block';
+  }
+});
+
+if (accessToken) {
+  showApp();
+} else {
+  showLogin();
+}
 
 /* init */
-showView('dashboard');
+
 </script>
 </body>
 </html>
