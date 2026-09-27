@@ -546,17 +546,28 @@
    STATE
 ======================================================= */
 const uid = (() => { let n = 1000; return () => 'ID-' + (n++); })();
-const API_BASE = 'http://127.0.0.1:8001/api';
-let accessToken = localStorage.getItem('access_token') || '';
+const API_BASE = 'http://127.0.0.1:8000/api';
+
 async function apiFetch(endpoint, options = {}) {
+  const token =
+    localStorage.getItem('accessToken') ||
+    localStorage.getItem('access_token') ||
+    '';
+
+  const headers = {
+    'Content-Type': 'application/json'
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const response = await fetch(`${API_BASE}${endpoint}`, {
     method: options.method || 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {}),
-      ...(options.headers || {})
-    },
-    ...(options.body ? { body: JSON.stringify(options.body) } : {})
+    headers: headers,
+    body: options.body
+      ? JSON.stringify(options.body)
+      : undefined
   });
 
   if (!response.ok) {
@@ -564,7 +575,9 @@ async function apiFetch(endpoint, options = {}) {
     throw new Error(`API ${response.status}: ${text}`);
   }
 
-  if (response.status === 204) return null;
+  if (response.status === 204) {
+    return null;
+  }
 
   return await response.json();
 }
@@ -1300,122 +1313,903 @@ function removeItem(key, id){
   render();
 }
 
-function openModal(title, fields, onSubmit){
+function openModal(title, fields, onSubmit) {
   const backdrop = document.getElementById('modal-backdrop');
   const modal = document.getElementById('modal');
+
   modal.innerHTML = `
     <button class="modal-close" id="modal-close">✕</button>
+
     <div class="sheet-title">${title}</div>
+
     <form id="modal-form">
-      ${fields.map(f=>`
-        <div class="field">
-          <label>${f.label}${f.req?' *':''}</label>
-          ${f.type==='select' ? `<select name="${f.k}" ${f.req?'required':''}>
-              <option value="">Select…</option>
-              ${(f.options||[]).map(o=>{
-                const val = (o && typeof o==='object') ? o.value : o;
-                const label = (o && typeof o==='object') ? o.label : o;
-                return `<option value="${val}">${label}</option>`;
-              }).join('')}
-            </select>`
-          : f.type==='textarea' ? `<textarea name="${f.k}" ${f.req?'required':''}></textarea>`
-          : `<input type="${f.type}" name="${f.k}" ${f.req?'required':''}>`}
-        </div>`).join('')}
-      <div class="modal-actions">
-        <button type="button" class="btn" id="modal-cancel">Cancel</button>
-        <button type="submit" class="btn btn-primary">Save</button>
+
+      <div class="modal-form-body">
+        ${fields.map(f => `
+          <div class="field">
+            <label>${f.label}${f.req ? ' *' : ''}</label>
+
+            ${
+              f.type === 'select'
+                ? `
+                  <select name="${f.k}" ${f.req ? 'required' : ''}>
+                    <option value="">Select…</option>
+
+                    ${(f.options || []).map(o => {
+                      const val =
+                        typeof o === 'object' ? o.value : o;
+                      const label =
+                        typeof o === 'object' ? o.label : o;
+
+                      return `<option value="${val}">${label}</option>`;
+                    }).join('')}
+                  </select>
+                `
+
+                : f.type === 'textarea'
+                  ? `
+                    <textarea
+                      name="${f.k}"
+                      ${f.req ? 'required' : ''}
+                    ></textarea>
+                  `
+
+                  : `
+                    <input
+                      type="${f.type}"
+                      name="${f.k}"
+                      ${f.req ? 'required' : ''}
+                      ${f.min !== undefined ? `min="${f.min}"` : ''}
+                      ${f.step !== undefined ? `step="${f.step}"` : ''}
+                    >
+                  `
+            }
+          </div>
+        `).join('')}
       </div>
+
+      <div class="modal-actions">
+        <button
+          type="button"
+          class="btn"
+          id="modal-cancel">
+          Cancel
+        </button>
+
+        <button
+          type="submit"
+          class="btn btn-primary"
+          id="modal-save">
+          Save
+        </button>
+      </div>
+
     </form>
   `;
+
+  /* Force correct modal layout */
+  modal.style.display = 'flex';
+  modal.style.flexDirection = 'column';
+  modal.style.maxHeight = '90vh';
+  modal.style.height = '90vh';
+  modal.style.overflow = 'hidden';
+
+  const form = document.getElementById('modal-form');
+
+  form.style.display = 'flex';
+  form.style.flexDirection = 'column';
+  form.style.flex = '1';
+  form.style.minHeight = '0';
+  form.style.overflow = 'hidden';
+
+  const body = modal.querySelector('.modal-form-body');
+
+  body.style.flex = '1';
+  body.style.minHeight = '0';
+  body.style.overflowY = 'auto';
+  body.style.overflowX = 'hidden';
+  body.style.paddingRight = '8px';
+
+  const actions = modal.querySelector('.modal-actions');
+
+  actions.style.flexShrink = '0';
+  actions.style.display = 'flex';
+  actions.style.justifyContent = 'flex-end';
+  actions.style.gap = '10px';
+  actions.style.padding = '14px 0 4px';
+  actions.style.background = 'inherit';
+
   backdrop.classList.add('open');
-  const close = ()=> backdrop.classList.remove('open');
+
+  const close = () => {
+    backdrop.classList.remove('open');
+  };
+
   document.getElementById('modal-close').onclick = close;
   document.getElementById('modal-cancel').onclick = close;
-  backdrop.onclick = e => { if(e.target===backdrop) close(); };
-  document.getElementById('modal-form').onsubmit = e=>{
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const data = {};
-    fields.forEach(f=> data[f.k] = fd.get(f.k));
-    onSubmit(data);
-    close();
+
+  backdrop.onclick = event => {
+    if (event.target === backdrop) {
+      close();
+    }
   };
-}
-const loginScreen = document.getElementById('login-screen');
-const app = document.getElementById('app');
-const loginForm = document.getElementById('login-form');
-const loginError = document.getElementById('login-error');
-const userRoleChip = document.getElementById('user-role-chip');
-const logoutButton = document.getElementById('btn-logout');
 
-function updateUserRole() {
-  const profile = JSON.parse(localStorage.getItem('user_profile') || 'null');
+  form.onsubmit = async event => {
+    event.preventDefault();
 
-  if (profile) {
-    userRoleChip.textContent =
-      `${profile.full_name || profile.username} · ${profile.role}`;
-  }
-}
+    if (!form.checkValidity()) {
+      form.reportValidity();
+      return;
+    }
 
-logoutButton.addEventListener('click', () => {
-  accessToken = '';
-  localStorage.removeItem('access_token');
-  localStorage.removeItem('refresh_token');
-  localStorage.removeItem('user_profile');
+    const fd = new FormData(form);
+    const data = {};
 
-  showLogin();
-  loginForm.reset();
-});
-
-function showLogin() {
-  loginScreen.style.display = 'flex';
-  app.style.display = 'none';
-}
-
-function showApp() {
-  loginScreen.style.display = 'none';
-  app.style.display = '';
-}
-
-loginForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-
-  loginError.style.display = 'none';
-
-  const username = document.getElementById('login-username').value.trim();
-  const password = document.getElementById('login-password').value;
-
-  try {
-    const loginResponse = await apiFetch('/login/', {
-      method: 'POST',
-      body: {
-        username,
-        password
-      }
+    fields.forEach(f => {
+      data[f.k] = fd.get(f.k);
     });
 
-    accessToken = loginResponse.access;
-    localStorage.setItem('access_token', accessToken);
-    localStorage.setItem('refresh_token', loginResponse.refresh);
+    const saveButton =
+      document.getElementById('modal-save');
 
-    const profile = await apiFetch('/profile/');
-    localStorage.setItem('user_profile', JSON.stringify(profile));
-    updateUserRole();
+    saveButton.disabled = true;
+    saveButton.textContent = 'Saving…';
 
-    showApp();
-    await loadProjects();
-    showView('dashboard');
+    try {
+      const result = await onSubmit(data);
 
-  } catch (error) {
-    console.error(error);
-    loginError.textContent = 'Invalid username or password.';
-    loginError.style.display = 'block';
+      if (result !== false) {
+        close();
+      }
+
+    } catch (error) {
+      console.error(error);
+    } finally {
+      saveButton.disabled = false;
+      saveButton.textContent = 'Save';
+    }
+  };
+}
+
+/* =======================================================
+   AUTHENTICATION
+======================================================= */
+
+let accessToken =
+  localStorage.getItem('access_token') || '';
+
+
+const loginScreen =
+  document.getElementById('login-screen');
+
+const app =
+  document.getElementById('app');
+
+const loginForm =
+  document.getElementById('login-form');
+
+const loginError =
+  document.getElementById('login-error');
+
+const userRoleChip =
+  document.getElementById('user-role-chip');
+
+const logoutButton =
+  document.getElementById('btn-logout');
+
+
+function updateUserRole() {
+
+  const profile =
+    JSON.parse(
+      localStorage.getItem('user_profile') || 'null'
+    );
+
+
+  if (profile && userRoleChip) {
+
+    userRoleChip.textContent =
+      `${profile.full_name || profile.username} · ${profile.role}`;
+
   }
-});
+}
 
-showLogin();
+
+function showLogin() {
+
+  if (loginScreen) {
+    loginScreen.style.display = 'flex';
+  }
+
+  if (app) {
+    app.style.display = 'none';
+  }
+}
+
+
+function showApp() {
+
+  if (loginScreen) {
+    loginScreen.style.display = 'none';
+  }
+
+  if (app) {
+    app.style.display = '';
+  }
+}
+
+
+if (logoutButton) {
+
+  logoutButton.addEventListener('click', () => {
+
+    accessToken = '';
+
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('user_profile');
+
+    showLogin();
+
+    if (loginForm) {
+      loginForm.reset();
+    }
+
+  });
+
+}
+
+
+if (loginForm) {
+
+  loginForm.addEventListener(
+    'submit',
+    async event => {
+
+      event.preventDefault();
+
+      loginError.style.display = 'none';
+
+
+      const username =
+        document
+          .getElementById('login-username')
+          .value
+          .trim();
+
+
+      const password =
+        document
+          .getElementById('login-password')
+          .value;
+
+
+      try {
+
+        const loginResponse =
+          await apiFetch(
+            '/login/',
+            {
+              method: 'POST',
+
+              body: {
+                username,
+                password
+              }
+            }
+          );
+
+
+        accessToken =
+          loginResponse.access;
+
+
+        localStorage.setItem(
+          'access_token',
+          accessToken
+        );
+
+
+        localStorage.setItem(
+          'refresh_token',
+          loginResponse.refresh
+        );
+
+
+        const profile =
+          await apiFetch('/profile/');
+
+
+        localStorage.setItem(
+          'user_profile',
+          JSON.stringify(profile)
+        );
+
+
+        updateUserRole();
+
+        showApp();
+
+        await loadProjects();
+
+        showView('dashboard');
+
+
+      } catch (error) {
+
+        console.error(error);
+
+        loginError.textContent =
+          'Invalid username or password.';
+
+        loginError.style.display = 'block';
+
+      }
+
+    }
+  );
+
+}
+
+
+/* =======================================================
+   INITIAL AUTH STATE
+======================================================= */
+
+const savedToken =
+  localStorage.getItem('access_token');
+
+
+if (savedToken) {
+
+  accessToken = savedToken;
+
+  updateUserRole();
+
+  showApp();
+
+} else {
+
+  showLogin();
+
+}
 
 /* init */
+
+/* =======================================================
+   PURCHASE MANAGEMENT — REAL API INTEGRATION
+======================================================= */
+
+if (!Array.isArray(state.purchases)) {
+  state.purchases = [];
+}
+
+async function purchaseApi(endpoint = '', options = {}) {
+  const token =
+    localStorage.getItem('accessToken') ||
+    localStorage.getItem('access_token') ||
+    '';
+
+  const headers = {
+    'Content-Type': 'application/json'
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(
+    `${API_BASE}/purchase/purchases/${endpoint}`,
+    {
+      method: options.method || 'GET',
+      headers,
+      body: options.body
+        ? JSON.stringify(options.body)
+        : undefined
+    }
+  );
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Purchase API ${response.status}: ${text}`);
+  }
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  return await response.json();
+}
+
+
+async function loadPurchases() {
+  try {
+    const data = await purchaseApi();
+
+    /*
+      Supports both:
+      1. Normal DRF array response
+      2. Paginated DRF response
+    */
+    state.purchases = Array.isArray(data)
+      ? data
+      : (data.results || []);
+
+    updatePurchaseCount();
+
+    if (currentView === 'purchases') {
+      renderPurchases();
+    }
+
+  } catch (error) {
+    console.error('Failed to load purchases:', error);
+    toast('Could not load purchases');
+  }
+}
+
+
+function updatePurchaseCount() {
+  const el = document.getElementById('nc-purchases');
+
+  if (el) {
+    el.textContent = state.purchases.length || '';
+  }
+}
+
+
+function renderPurchases() {
+  const s = sheet(
+    'Resources',
+    'Purchase Management',
+    `${state.purchases.length} purchase(s)`
+  );
+
+  const actions = document.createElement('div');
+
+  actions.style.cssText = `
+    display:flex;
+    justify-content:flex-end;
+    margin-bottom:14px;
+  `;
+
+  actions.innerHTML = `
+    <button class="btn btn-primary" id="btn-new-purchase">
+      + New Purchase
+    </button>
+  `;
+
+  actions.querySelector('#btn-new-purchase').onclick =
+    openPurchaseForm;
+
+  s.appendChild(actions);
+
+
+  if (!state.purchases.length) {
+    s.appendChild(
+      emptyEl(
+        'No purchases yet — click "+ New Purchase" to create one.'
+      )
+    );
+
+    els.content.appendChild(s);
+    return;
+  }
+
+
+  const tbl = document.createElement('table');
+
+  tbl.innerHTML = `
+    <thead>
+      <tr>
+        <th>Purchase #</th>
+        <th>Supplier</th>
+        <th>Item</th>
+        <th>Project</th>
+        <th>Quantity</th>
+        <th>Total</th>
+        <th>Date</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+
+    <tbody>
+      ${state.purchases.map(p => `
+        <tr>
+
+          <td class="cell-mono">
+            ${p.purchase_number || '—'}
+          </td>
+
+          <td>
+            ${p.supplier_name || '—'}
+          </td>
+
+          <td>
+            <b>${p.item_name || '—'}</b>
+          </td>
+
+          <td>
+            ${p.project_name || p.project || '—'}
+          </td>
+
+          <td class="cell-mono">
+            ${p.quantity ?? '—'} ${p.unit || ''}
+          </td>
+
+          <td class="cell-mono">
+            ${fmtMoney(p.total_amount || 0)}
+          </td>
+
+          <td class="cell-mono">
+            ${fmtDate(p.purchase_date)}
+          </td>
+
+          <td>
+            <span class="badge ${
+              p.status === 'RECEIVED'
+                ? 'badge-green'
+                : p.status === 'CANCELLED'
+                ? 'badge-red'
+                : 'badge-amber'
+            }">
+              ${p.status || 'PENDING'}
+            </span>
+          </td>
+
+          <td>
+            <button
+              class="btn btn-sm btn-ghost-danger"
+              onclick="deletePurchase(${p.id})">
+              Delete
+            </button>
+          </td>
+
+        </tr>
+      `).join('')}
+    </tbody>
+  `;
+
+  s.appendChild(tbl);
+
+  els.content.appendChild(s);
+}
+
+
+function openPurchaseForm() {
+
+  const projects = state.projects || [];
+
+  if (!projects.length) {
+    toast('Create a project first');
+    return;
+  }
+
+
+  openModal(
+    'New Purchase',
+
+    [
+
+      {
+        k: 'project',
+        label: 'Project',
+        type: 'select',
+        options: (() => {
+  const seen = new Set();
+
+  return projects
+    .filter(p => {
+      const name = p.project_name || p.name || `Project ${p.id}`;
+
+      if (seen.has(name)) {
+        return false;
+      }
+
+      seen.add(name);
+      return true;
+    })
+    .map(p => ({
+      value: p.id,
+      label: p.project_name || p.name || `Project ${p.id}`
+    }));
+})(),
+        req: true
+      },
+
+      {
+        k: 'supplier_name',
+        label: 'Supplier / Vendor',
+        type: 'text',
+        req: true
+      },
+
+      {
+        k: 'purchase_number',
+        label: 'Purchase Number',
+        type: 'text',
+        req: true
+      },
+
+      {
+        k: 'purchase_date',
+        label: 'Purchase Date',
+        type: 'date',
+        req: true
+      },
+
+      {
+        k: 'item_name',
+        label: 'Item / Material',
+        type: 'text',
+        req: true
+      },
+
+      {
+        k: 'quantity',
+        label: 'Quantity',
+        type: 'number',
+        req: true,
+        min: 0.01,
+        step: 0.01
+      },
+
+      {
+        k: 'unit',
+        label: 'Unit',
+        type: 'text',
+        req: true
+      },
+
+      {
+        k: 'unit_price',
+        label: 'Unit Price (₹)',
+        type: 'number',
+        req: true,
+        min: 0,
+        step: 0.01
+      },
+
+      {
+        k: 'total_amount',
+        label: 'Total Amount (₹)',
+        type: 'number',
+        req: true,
+        min: 0,
+        step: 0.01
+      },
+
+      {
+        k: 'status',
+        label: 'Status',
+        type: 'select',
+        options: [
+          {
+            value: 'PENDING',
+            label: 'Pending'
+          },
+          {
+            value: 'ORDERED',
+            label: 'Ordered'
+          },
+          {
+            value: 'RECEIVED',
+            label: 'Received'
+          },
+          {
+            value: 'CANCELLED',
+            label: 'Cancelled'
+          }
+        ],
+        req: true
+      },
+
+      {
+        k: 'notes',
+        label: 'Notes',
+        type: 'textarea'
+      }
+
+    ],
+
+    async data => {
+
+      const quantity = Number(data.quantity);
+      const unitPrice = Number(data.unit_price);
+      const totalAmount = Number(data.total_amount);
+
+
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        toast('Quantity must be greater than 0');
+        return;
+      }
+
+
+      if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+        toast('Unit price cannot be negative');
+        return;
+      }
+
+
+      if (!Number.isFinite(totalAmount) || totalAmount < 0) {
+        toast('Total amount cannot be negative');
+        return;
+      }
+
+
+      try {
+
+        await purchaseApi('', {
+          method: 'POST',
+
+          body: {
+            project: Number(data.project),
+            supplier_name: data.supplier_name.trim(),
+            purchase_number: data.purchase_number.trim(),
+            purchase_date: data.purchase_date,
+            item_name: data.item_name.trim(),
+            quantity,
+            unit: data.unit.trim(),
+            unit_price: unitPrice,
+            total_amount: totalAmount,
+            status: data.status,
+            notes: data.notes
+              ? data.notes.trim()
+              : ''
+          }
+        });
+
+
+        toast('Purchase created');
+
+
+        /*
+          Load the newly saved data.
+          loadPurchases() already renders the page,
+          so DO NOT call renderPurchases() again.
+        */
+        currentView = 'purchases';
+
+        document
+          .querySelectorAll('.nav-item')
+          .forEach(b => {
+            b.classList.toggle(
+              'active',
+              b.dataset.view === 'purchases'
+            );
+          });
+
+        document.getElementById(
+          'topbar-title'
+        ).textContent = 'Purchase Management';
+
+        document.getElementById(
+          'topbar-crumb'
+        ).textContent =
+          'Suppliers · Materials · Procurement';
+
+        els.content.innerHTML = '';
+
+        await loadPurchases();
+
+      } catch (error) {
+
+        console.error(error);
+
+        toast(
+          error.message ||
+          'Could not create purchase'
+        );
+      }
+
+    }
+  );
+}
+
+
+async function deletePurchase(id) {
+
+  if (!confirm('Delete this purchase?')) {
+    return;
+  }
+
+
+  try {
+
+    await purchaseApi(`${id}/`, {
+      method: 'DELETE'
+    });
+
+    toast('Purchase deleted');
+
+    await loadPurchases();
+
+  } catch (error) {
+
+    console.error(error);
+
+    toast(
+      error.message ||
+      'Could not delete purchase'
+    );
+  }
+}
+
+
+/* =======================================================
+   PURCHASE NAVIGATION
+======================================================= */
+
+let purchaseNav =
+  document.querySelector(
+    '.nav-item[data-view="purchases"]'
+  );
+
+
+if (!purchaseNav) {
+
+  purchaseNav =
+    document.createElement('button');
+
+  purchaseNav.className = 'nav-item';
+
+  purchaseNav.dataset.view = 'purchases';
+
+  purchaseNav.innerHTML = `
+    <span>▣</span>
+    Purchases
+    <span class="count" id="nc-purchases"></span>
+  `;
+
+
+  const resourceLabel =
+    [...document.querySelectorAll('.nav-group-label')]
+      .find(
+        el =>
+          el.textContent.trim() === 'Resources'
+      );
+
+
+  if (resourceLabel) {
+    resourceLabel.after(purchaseNav);
+  }
+}
+
+
+purchaseNav.onclick = async () => {
+
+  currentView = 'purchases';
+
+
+  document
+    .querySelectorAll('.nav-item')
+    .forEach(b => {
+      b.classList.toggle(
+        'active',
+        b.dataset.view === 'purchases'
+      );
+    });
+
+
+  document.getElementById(
+    'topbar-title'
+  ).textContent = 'Purchase Management';
+
+
+  document.getElementById(
+    'topbar-crumb'
+  ).textContent =
+    'Suppliers · Materials · Procurement';
+
+
+  els.content.innerHTML = '';
+
+
+  await loadPurchases();
+};
+
+
+updatePurchaseCount();
 
 </script>
 </body>
