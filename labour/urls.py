@@ -1,7 +1,18 @@
 from django.urls import path
-from .views import labour, labour_detail
+
+from .views import LabourListCreateView, LabourDetailView
+
 
 urlpatterns = [
-    path("", labour, name="labour"),
-    path("<int:pk>/", labour_detail, name="labour_detail"),
+    path(
+        "",
+        LabourListCreateView.as_view(),
+        name="labour"
+    ),
+
+    path(
+        "<int:pk>/",
+        LabourDetailView.as_view(),
+        name="labour_detail"
+    ),
 ]
