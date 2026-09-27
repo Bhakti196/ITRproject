@@ -527,7 +527,7 @@
     <div class="topbar-right">
       <span class="tenant-chip" id="user-role-chip">USER</span>
       <button class="btn" id="btn-refresh-ai">↻ Refresh AI</button>
-      <button class="btn btn-primary" id="btn-quick-add">+ New</button>
+      <button type="button" class="btn btn-primary" id="btn-quick-add">+ New</button>
       <button class="btn" id="btn-logout">Logout</button>
     </div>
     </div>
@@ -715,17 +715,28 @@ document.getElementById('btn-quick-add').addEventListener('click', ()=>{
 
 function showView(view){
   currentView = view;
-  document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
+
+  document.querySelectorAll('.nav-item').forEach(b =>
+    b.classList.toggle('active', b.dataset.view === view)
+  );
+
   const titles = {
-    dashboard:['Dashboard','Portfolio Overview'], clients:['Client Management','Relationships · Contacts · Contracts'],
-    contractors:['Contractor Management','Work Packages · Payment Status'], projects:['Project Management','Timelines · Budgets · Milestones'],
-    sites:['Site Management','Locations · Teams · Live Status'], progress:['Daily Progress','Site Logs · Photos · AI Reports'],
-    materials:['Material Stock','Inventory · Reorder Alerts'], labour:['Labour Management','Attendance · Deployment'],
-    equipment:['Equipment Tracking','Assignment · Utilization'], billing:['Billing','Invoices · Line Items'],
-    payments:['Payments','Receipts · Disbursements'],
+    dashboard:['Dashboard','Portfolio Overview'],
+    clients:['Client Management','Relationships · Contacts · Contracts'],
+    contractors:['Contractor Management','Work Packages · Payment Status'],
+    projects:['Project Management','Timelines · Budgets · Milestones'],
+    sites:['Site Management','Locations · Teams · Live Status'],
+    progress:['Daily Progress','Site Logs · Photos · AI Reports'],
+    materials:['Material Stock','Inventory · Reorder Alerts'],
+    labour:['Labour Management','Attendance · Deployment'],
+    equipment:['Equipment Tracking','Assignment · Utilization'],
+    billing:['Billing','Invoices · Line Items'],
+    payments:['Payments','Receipts · Disbursements']
   };
+
   document.getElementById('topbar-title').textContent = titles[view][0];
   document.getElementById('topbar-crumb').textContent = titles[view][1];
+
   render();
 }
 
@@ -930,19 +941,90 @@ function renderProjects(){
   s.appendChild(tbl);
   els.content.appendChild(s);
 }
-function openProjectForm(){
-  openModal('New Project', [
-    {k:'name', label:'Project Name', type:'text', req:true},
-    {k:'client', label:'Client', type:'select', options:state.clients.map(c=>c.name), req:true},
-    {k:'start', label:'Start Date', type:'date', req:true},
-    {k:'target', label:'Target End Date', type:'date', req:true},
-    {k:'budget', label:'Budget (₹)', type:'number', req:true},
-  ], data=>{
-    state.projects.unshift({id:uid(), name:data.name, client:data.client, start:data.start, target:data.target,
-      budget:Number(data.budget), spend:0, progress:0, status:'On Track'});
-    toast('Project created'); showView('projects');
-  });
+async function openProjectForm(){
+  try {
+    const sites = await apiFetch('/sites/');
+
+    if (!sites.length) {
+      toast('Create a site first');
+      showView('sites');
+      return;
+    }
+
+    openModal('New Project', [
+      {
+        k:'project_name',
+        label:'Project Name',
+        type:'text',
+        req:true
+      },
+      {
+        k:'site',
+        label:'Site',
+        type:'select',
+        options:sites.map(site => `${site.id} — ${site.site_name}`),
+        req:true
+      },
+      {
+        k:'description',
+        label:'Description',
+        type:'text'
+      },
+      {
+        k:'start_date',
+        label:'Start Date',
+        type:'date',
+        req:true
+      },
+      {
+        k:'end_date',
+        label:'Target End Date',
+        type:'date'
+      },
+      {
+        k:'status',
+        label:'Status',
+        type:'select',
+        options:['NOT_STARTED','IN_PROGRESS','COMPLETED'],
+        req:true
+      }
+    ], async data => {
+
+      const siteId = parseInt(data.site.split(' — ')[0], 10);
+
+      const project = await apiFetch('/projects/', {
+        method: 'POST',
+        body: {
+          site: siteId,
+          project_name: data.project_name,
+          description: data.description || '',
+          start_date: data.start_date,
+          end_date: data.end_date || null,
+          status: data.status
+        }
+      });
+
+      state.projects.unshift({
+        id: project.id,
+        name: project.project_name,
+        client: '—',
+        start: project.start_date,
+        target: project.end_date,
+        budget: 0,
+        spend: 0,
+        progress: 0,
+        status: project.status
+      });
+
+      toast('Project created successfully');
+      showView('projects');
+    });
+  } catch (error) {
+    console.error('Project error:', error);
+    toast('Project could not be created');
+  }
 }
+
 
 /* =======================================================
    SITES
@@ -1210,39 +1292,84 @@ function removeItem(key, id){
 function openModal(title, fields, onSubmit){
   const backdrop = document.getElementById('modal-backdrop');
   const modal = document.getElementById('modal');
+
   modal.innerHTML = `
     <button class="modal-close" id="modal-close">✕</button>
     <div class="sheet-title">${title}</div>
     <form id="modal-form">
-      ${fields.map(f=>`
+      ${fields.map(f => `
         <div class="field">
-          <label>${f.label}${f.req?' *':''}</label>
-          ${f.type==='select' ? `<select name="${f.k}" ${f.req?'required':''}>
-              <option value="">Select…</option>
-              ${(f.options||[]).map(o=>`<option value="${o}">${o}</option>`).join('')}
-            </select>`
-          : f.type==='textarea' ? `<textarea name="${f.k}" ${f.req?'required':''}></textarea>`
-          : `<input type="${f.type}" name="${f.k}" ${f.req?'required':''}>`}
-        </div>`).join('')}
+          <label>${f.label}${f.req ? ' *' : ''}</label>
+          ${
+            f.type === 'select'
+              ? `<select name="${f.k}" ${f.req ? 'required' : ''}>
+                  <option value="">Select…</option>
+                  ${(f.options || []).map(o => `<option value="${o}">${o}</option>`).join('')}
+                </select>`
+              : f.type === 'textarea'
+                ? `<textarea name="${f.k}" ${f.req ? 'required' : ''}></textarea>`
+                : `<input type="${f.type}" name="${f.k}" ${f.req ? 'required' : ''}>`
+          }
+        </div>
+      `).join('')}
+
       <div class="modal-actions">
         <button type="button" class="btn" id="modal-cancel">Cancel</button>
         <button type="submit" class="btn btn-primary">Save</button>
       </div>
     </form>
   `;
+
   backdrop.classList.add('open');
-  const close = ()=> backdrop.classList.remove('open');
+
+  const close = () => backdrop.classList.remove('open');
+
   document.getElementById('modal-close').onclick = close;
   document.getElementById('modal-cancel').onclick = close;
-  backdrop.onclick = e => { if(e.target===backdrop) close(); };
-  document.getElementById('modal-form').onsubmit = e=>{
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const data = {};
-    fields.forEach(f=> data[f.k] = fd.get(f.k));
-    onSubmit(data);
-    close();
+
+  backdrop.onclick = e => {
+    if (e.target === backdrop) close();
   };
+
+  document.getElementById('modal-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const fd = new FormData(e.currentTarget);
+    const data = {};
+
+    fields.forEach(f => {
+      data[f.k] = fd.get(f.k);
+    });
+
+    try {
+      await onSubmit(data);
+    } catch (error) {
+      console.error('Modal submit failed:', error);
+    }
+
+    close();
+  });
+}
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  const fd = new FormData(e.currentTarget);
+  const data = {};
+
+  fields.forEach(f => {
+    data[f.k] = fd.get(f.k);
+  });
+
+  try {
+    await onSubmit(data);
+  } catch (error) {
+    console.error('Modal submit failed:', error);
+  }
+
+  close();
+});
 }
 const loginScreen = document.getElementById('login-screen');
 const app = document.getElementById('app');
@@ -1315,7 +1442,11 @@ loginForm.addEventListener('submit', async (event) => {
   }
 });
 
-showLogin();
+if (accessToken) {
+  showApp();
+} else {
+  showLogin();
+}
 
 /* init */
 
