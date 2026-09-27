@@ -31,6 +31,12 @@ class Project(models.Model):
         default="NOT_STARTED"
     )
 
+    budget = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=0
+    )
+
     created_by = models.ForeignKey(
         CustomUser,
         on_delete=models.CASCADE

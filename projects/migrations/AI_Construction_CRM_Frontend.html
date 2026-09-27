@@ -18,6 +18,7 @@
     --paper-dim:#e9e3d2;
     --ink:#132133;
     --ink-soft:#4d5c6b;
+    --ink-soft-dark:#8fa3b3;
     --orange:#ff6a3d;
     --orange-dim:#e0572a;
     --green:#4f9d78;
@@ -88,7 +89,7 @@
     font-size:9px;
     letter-spacing:0.16em;
     text-transform:uppercase;
-    color:var(--ink-soft);
+    color:var(--ink-soft-dark);
     padding:14px 20px 6px;
   }
   .nav-item{
@@ -117,14 +118,14 @@
     margin-left:auto;
     font-family:'IBM Plex Mono', monospace;
     font-size:10px;
-    color:var(--ink-soft);
+    color:var(--ink-soft-dark);
   }
   .sidebar-foot{
     padding:14px 20px 18px;
     border-top:1px solid var(--grid-line-strong);
     font-family:'IBM Plex Mono', monospace;
     font-size:9.5px;
-    color:var(--ink-soft);
+    color:var(--ink-soft-dark);
     letter-spacing:0.04em;
   }
   .sidebar-foot .dot{color:var(--green); margin-right:6px;}
@@ -145,7 +146,7 @@
   .topbar-breadcrumb{
     font-family:'IBM Plex Mono', monospace;
     font-size:10px; letter-spacing:.1em; text-transform:uppercase;
-    color:var(--ink-soft);
+    color:var(--ink-soft-dark);
   }
   .topbar-right{display:flex; align-items:center; gap:10px;}
   .tenant-chip{
@@ -250,7 +251,7 @@
     font-size:26px; font-weight:700;
     margin-top:8px;
   }
-  .kpi-delta{font-size:11px; margin-top:6px; color:var(--ink-soft);}
+  .kpi-delta{font-size:11px; margin-top:6px; color:var(--ink-soft-dark);}
   .kpi-delta.up{color:var(--green);}
   .kpi-delta.down{color:var(--red);}
 
@@ -527,7 +528,7 @@
     <div class="topbar-right">
       <span class="tenant-chip" id="user-role-chip">USER</span>
       <button class="btn" id="btn-refresh-ai">↻ Refresh AI</button>
-      <button type="button" class="btn btn-primary" id="btn-quick-add">+ New</button>
+      <button class="btn btn-primary" id="btn-quick-add">+ New</button>
       <button class="btn" id="btn-logout">Logout</button>
     </div>
     </div>
@@ -567,6 +568,40 @@ async function apiFetch(endpoint, options = {}) {
 
   return await response.json();
 }
+let liveSites = [];
+
+async function loadSites(){
+  try{
+    liveSites = await apiFetch('/sites/');
+  }catch(err){
+    console.error(err);
+    liveSites = [];
+  }
+}
+
+async function loadProjects(){
+  try{
+    state.projects = await apiFetch('/projects/');
+  }catch(err){
+    console.error(err);
+    state.projects = [];
+  }
+  if(currentView === 'projects') render();
+  updateCounts();
+}
+
+async function deleteProject(id){
+  if(!confirm('Delete this project? This cannot be undone.')) return;
+  try{
+    await apiFetch(`/projects/${id}/`, { method:'DELETE' });
+    toast('Project deleted');
+    loadProjects();
+  }catch(err){
+    console.error(err);
+    toast('Could not delete project');
+  }
+}
+
 const todayISO = () => new Date().toISOString().slice(0,10);
 const daysBetween = (a,b) => Math.round((new Date(b) - new Date(a)) / 86400000);
 const fmtMoney = n => '₹' + Number(n).toLocaleString('en-IN');
@@ -583,11 +618,7 @@ const state = {
     {id:uid(), name:'Bright Line Electricals', trade:'Electrical', phone:'+91 91580 22110', status:'Active', paid:380000, due:60000},
     {id:uid(), name:'AquaFlow Plumbing', trade:'Plumbing & Sanitation', phone:'+91 96370 77812', status:'On Hold', paid:210000, due:0},
   ],
-  projects: [
-    {id:uid(), name:'Devkar Heights — Phase 2', client:'Devkar Realty Pvt. Ltd.', start:'2026-02-01', target:'2026-11-30', budget:9500000, spend:5230000, progress:52, status:'On Track'},
-    {id:uid(), name:'NMC Affordable Housing Block C', client:'Nashik Municipal Corp — Housing Wing', start:'2025-12-10', target:'2026-08-15', budget:14200000, spend:11800000, progress:78, status:'At Risk'},
-    {id:uid(), name:'Sahyadri Warehouse Unit 4', client:'Sahyadri Warehousing LLP', start:'2026-05-01', target:'2027-01-20', budget:6200000, spend:1650000, progress:22, status:'On Track'},
-  ],
+  projects: [],
   sites: [
     {id:uid(), name:'Devkar Heights Site', project:'Devkar Heights — Phase 2', location:'Gangapur Road, Nashik', supervisor:'Ravindra Pawar', status:'Active', workers:34, equipment:5},
     {id:uid(), name:'NMC Block C Site', project:'NMC Affordable Housing Block C', location:'Panchavati, Nashik', supervisor:'Sunita Bhosale', status:'Active', workers:52, equipment:8},
@@ -715,29 +746,19 @@ document.getElementById('btn-quick-add').addEventListener('click', ()=>{
 
 function showView(view){
   currentView = view;
-
-  document.querySelectorAll('.nav-item').forEach(b =>
-    b.classList.toggle('active', b.dataset.view === view)
-  );
-
+  document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
   const titles = {
-    dashboard:['Dashboard','Portfolio Overview'],
-    clients:['Client Management','Relationships · Contacts · Contracts'],
-    contractors:['Contractor Management','Work Packages · Payment Status'],
-    projects:['Project Management','Timelines · Budgets · Milestones'],
-    sites:['Site Management','Locations · Teams · Live Status'],
-    progress:['Daily Progress','Site Logs · Photos · AI Reports'],
-    materials:['Material Stock','Inventory · Reorder Alerts'],
-    labour:['Labour Management','Attendance · Deployment'],
-    equipment:['Equipment Tracking','Assignment · Utilization'],
-    billing:['Billing','Invoices · Line Items'],
-    payments:['Payments','Receipts · Disbursements']
+    dashboard:['Dashboard','Portfolio Overview'], clients:['Client Management','Relationships · Contacts · Contracts'],
+    contractors:['Contractor Management','Work Packages · Payment Status'], projects:['Project Management','Timelines · Budgets · Milestones'],
+    sites:['Site Management','Locations · Teams · Live Status'], progress:['Daily Progress','Site Logs · Photos · AI Reports'],
+    materials:['Material Stock','Inventory · Reorder Alerts'], labour:['Labour Management','Attendance · Deployment'],
+    equipment:['Equipment Tracking','Assignment · Utilization'], billing:['Billing','Invoices · Line Items'],
+    payments:['Payments','Receipts · Disbursements'],
   };
-
   document.getElementById('topbar-title').textContent = titles[view][0];
   document.getElementById('topbar-crumb').textContent = titles[view][1];
-
   render();
+  if(view === 'projects') loadProjects();
 }
 
 function updateCounts(){
@@ -774,8 +795,20 @@ function sheet(labelText, titleText, subText){
    DASHBOARD
 ======================================================= */
 function renderDashboard(){
-  const totalBudget = state.projects.reduce((s,p)=>s+p.budget,0);
-  const totalSpend = state.projects.reduce((s,p)=>s+p.spend,0);
+  // NOTE: real projects don't yet carry progress/spend (that needs the
+  // Progress & Purchase modules, still to be built) — fall back safely
+  // instead of crashing or showing NaN/undefined.
+  const projectsVM = state.projects.map(p=>({
+    ...p,
+    name: p.project_name,
+    start: p.start_date,
+    target: p.end_date || p.start_date,
+    progress: p.progress ?? 0,
+    spend: p.spend ?? 0,
+  }));
+
+  const totalBudget = projectsVM.reduce((s,p)=>s+Number(p.budget||0),0);
+  const totalSpend = projectsVM.reduce((s,p)=>s+Number(p.spend||0),0);
   const activeSites = state.sites.filter(s=>s.status==='Active').length;
   const dueInvoices = state.invoices.filter(i=>i.status!=='Paid').reduce((s,i)=>s+i.amount,0);
 
@@ -784,7 +817,7 @@ function renderDashboard(){
   kpiWrap.innerHTML = `
     <div class="kpi"><div class="kpi-label">Active Projects</div><div class="kpi-value">${state.projects.length}</div><div class="kpi-delta">${activeSites} sites live</div></div>
     <div class="kpi"><div class="kpi-label">Portfolio Budget</div><div class="kpi-value">${fmtMoney(totalBudget)}</div><div class="kpi-delta">${fmtMoney(totalSpend)} spent</div></div>
-    <div class="kpi"><div class="kpi-label">Spend Utilisation</div><div class="kpi-value">${Math.round(totalSpend/totalBudget*100)}%</div><div class="kpi-delta ${totalSpend/totalBudget>0.75?'down':'up'}">of total budget</div></div>
+    <div class="kpi"><div class="kpi-label">Spend Utilisation</div><div class="kpi-value">${totalBudget>0 ? Math.round(totalSpend/totalBudget*100) : 0}%</div><div class="kpi-delta ${totalBudget>0 && totalSpend/totalBudget>0.75?'down':'up'}">of total budget</div></div>
     <div class="kpi"><div class="kpi-label">Outstanding Receivables</div><div class="kpi-value">${fmtMoney(dueInvoices)}</div><div class="kpi-delta down">${state.invoices.filter(i=>i.status==='Overdue').length} overdue invoice(s)</div></div>
   `;
   els.content.appendChild(kpiWrap);
@@ -793,7 +826,7 @@ function renderDashboard(){
   const aiGrid = document.createElement('div');
   aiGrid.className = 'grid grid-3 section-gap';
 
-  state.projects.forEach(p=>{
+  projectsVM.forEach(p=>{
     const c = AI.completion(p);
     const co = AI.costOverrun(p);
     const risk = AI.riskLevel(p);
@@ -841,17 +874,17 @@ function renderDashboard(){
 
   const projSheet = sheet('Execution', 'Project Status', `${state.projects.length} active`);
   const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th>Project</th><th>Client</th><th>Progress</th><th>Budget vs Spend</th><th>Status</th></tr></thead>
-    <tbody>${state.projects.map(p=>`
+  tbl.innerHTML = `<thead><tr><th>Project</th><th>Site</th><th>Progress</th><th>Budget vs Spend</th><th>Status</th></tr></thead>
+    <tbody>${projectsVM.map(p=>`
       <tr>
         <td>${p.name}</td>
-        <td class="muted">${p.client}</td>
+        <td class="muted">${p.site_name || '—'}</td>
         <td style="min-width:140px;">
           <div class="progress-track"><div class="progress-fill ${p.progress<40?'':(p.progress<75?'':'green')}" style="width:${p.progress}%"></div></div>
           <span class="cell-mono" style="font-size:10.5px;">${p.progress}%</span>
         </td>
         <td class="cell-mono">${fmtMoney(p.spend)} / ${fmtMoney(p.budget)}</td>
-        <td><span class="badge ${p.status==='On Track'?'badge-green':'badge-amber'}">${p.status}</span></td>
+        <td><span class="badge ${PROJECT_STATUS_BADGE[p.status] || 'badge-gray'}">${PROJECT_STATUS_LABEL[p.status] || p.status}</span></td>
       </tr>`).join('')}</tbody>`;
   projSheet.appendChild(tbl);
   els.content.appendChild(projSheet);
@@ -923,108 +956,80 @@ function openContractorForm(){
 /* =======================================================
    PROJECTS
 ======================================================= */
+const PROJECT_STATUS_LABEL = {
+  NOT_STARTED: 'Not Started',
+  IN_PROGRESS: 'In Progress',
+  COMPLETED: 'Completed',
+};
+const PROJECT_STATUS_BADGE = {
+  NOT_STARTED: 'badge-gray',
+  IN_PROGRESS: 'badge-amber',
+  COMPLETED: 'badge-green',
+};
+
 function renderProjects(){
-  const s = sheet('Execution', 'Projects', `${state.projects.length} active`);
+  const s = sheet('Execution', 'Projects', `${state.projects.length} project(s)`);
+  if(state.projects.length === 0){
+    s.appendChild(emptyEl('No projects yet — click "+ New" to create one.'));
+    els.content.appendChild(s);
+    return;
+  }
   const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th>Project</th><th>Client</th><th>Start → Target</th><th>Progress</th><th>Budget</th><th>Spend</th><th>Status</th><th></th></tr></thead>
+  tbl.innerHTML = `<thead><tr><th>Project</th><th>Site</th><th>Start → End</th><th>Budget</th><th>Status</th><th></th></tr></thead>
     <tbody>${state.projects.map(p=>`
       <tr>
-        <td><b>${p.name}</b></td>
-        <td class="muted">${p.client}</td>
-        <td class="cell-mono" style="font-size:11px;">${fmtDate(p.start)} → ${fmtDate(p.target)}</td>
-        <td style="min-width:120px;"><div class="progress-track"><div class="progress-fill" style="width:${p.progress}%"></div></div><span class="cell-mono" style="font-size:10.5px;">${p.progress}%</span></td>
+        <td><b>${p.project_name}</b></td>
+        <td class="muted">${p.site_name || '—'}</td>
+        <td class="cell-mono" style="font-size:11px;">${fmtDate(p.start_date)} → ${p.end_date ? fmtDate(p.end_date) : '—'}</td>
         <td class="cell-mono">${fmtMoney(p.budget)}</td>
-        <td class="cell-mono">${fmtMoney(p.spend)}</td>
-        <td><span class="badge ${p.status==='On Track'?'badge-green':'badge-amber'}">${p.status}</span></td>
-        <td><button class="btn btn-sm btn-ghost-danger" onclick="removeItem('projects','${p.id}')">Delete</button></td>
+        <td><span class="badge ${PROJECT_STATUS_BADGE[p.status] || 'badge-gray'}">${PROJECT_STATUS_LABEL[p.status] || p.status}</span></td>
+        <td><button class="btn btn-sm btn-ghost-danger" onclick="deleteProject(${p.id})">Delete</button></td>
       </tr>`).join('')}</tbody>`;
   s.appendChild(tbl);
   els.content.appendChild(s);
 }
+
 async function openProjectForm(){
-  try {
-    const sites = await apiFetch('/sites/');
-
-    if (!sites.length) {
-      toast('Create a site first');
-      showView('sites');
-      return;
-    }
-
-    openModal('New Project', [
-      {
-        k:'project_name',
-        label:'Project Name',
-        type:'text',
-        req:true
-      },
-      {
-        k:'site',
-        label:'Site',
-        type:'select',
-        options:sites.map(site => `${site.id} — ${site.site_name}`),
-        req:true
-      },
-      {
-        k:'description',
-        label:'Description',
-        type:'text'
-      },
-      {
-        k:'start_date',
-        label:'Start Date',
-        type:'date',
-        req:true
-      },
-      {
-        k:'end_date',
-        label:'Target End Date',
-        type:'date'
-      },
-      {
-        k:'status',
-        label:'Status',
-        type:'select',
-        options:['NOT_STARTED','IN_PROGRESS','COMPLETED'],
-        req:true
-      }
-    ], async data => {
-
-      const siteId = parseInt(data.site.split(' — ')[0], 10);
-
-      const project = await apiFetch('/projects/', {
-        method: 'POST',
-        body: {
-          site: siteId,
+  await loadSites();
+  if(liveSites.length === 0){
+    toast('Add a Site first (via /admin/) before creating a project');
+    return;
+  }
+  openModal('New Project', [
+    {k:'project_name', label:'Project Name', type:'text', req:true},
+    {k:'site', label:'Site', type:'select', options: liveSites.map(s=>({value:s.id, label:s.site_name})), req:true},
+    {k:'description', label:'Description', type:'textarea'},
+    {k:'start_date', label:'Start Date', type:'date', req:true},
+    {k:'end_date', label:'Target End Date', type:'date'},
+    {k:'status', label:'Status', type:'select', options:[
+      {value:'NOT_STARTED', label:'Not Started'},
+      {value:'IN_PROGRESS', label:'In Progress'},
+      {value:'COMPLETED', label:'Completed'},
+    ], req:true},
+    {k:'budget', label:'Budget (₹)', type:'number', req:true},
+  ], async data=>{
+    try{
+      await apiFetch('/projects/', {
+        method:'POST',
+        body:{
           project_name: data.project_name,
+          site: Number(data.site),
           description: data.description || '',
           start_date: data.start_date,
           end_date: data.end_date || null,
-          status: data.status
+          status: data.status,
+          budget: Number(data.budget),
         }
       });
-
-      state.projects.unshift({
-        id: project.id,
-        name: project.project_name,
-        client: '—',
-        start: project.start_date,
-        target: project.end_date,
-        budget: 0,
-        spend: 0,
-        progress: 0,
-        status: project.status
-      });
-
-      toast('Project created successfully');
+      toast('Project created');
       showView('projects');
-    });
-  } catch (error) {
-    console.error('Project error:', error);
-    toast('Project could not be created');
-  }
+      loadProjects();
+    }catch(err){
+      console.error(err);
+      toast('Could not create project');
+    }
+  });
 }
-
 
 /* =======================================================
    SITES
@@ -1046,6 +1051,7 @@ function renderSites(){
         <div>🚜 ${site.equipment} units</div>
       </div>
       <div class="mini-note">Supervisor: ${site.supervisor}</div>
+      <div style="margin-top:10px; text-align:right;"><button class="btn btn-sm btn-ghost-danger" onclick="removeItem('sites','${site.id}')">Delete</button></div>
     `;
     grid.appendChild(div);
   });
@@ -1055,7 +1061,7 @@ function renderSites(){
 function openSiteForm(){
   openModal('New Site', [
     {k:'name', label:'Site Name', type:'text', req:true},
-    {k:'project', label:'Project', type:'select', options:state.projects.map(p=>p.name), req:true},
+    {k:'project', label:'Project', type:'select', options:state.projects.map(p=>p.project_name), req:true},
     {k:'location', label:'Location', type:'text', req:true},
     {k:'supervisor', label:'Site Supervisor', type:'text', req:true},
   ], data=>{
@@ -1120,7 +1126,7 @@ function openProgressForm(){
 function renderMaterials(){
   const s = sheet('Resources', 'Material Stock', `${state.materials.length} items tracked`);
   const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th>Item</th><th>Site</th><th>Quantity</th><th>Threshold</th><th>Rate</th><th>Status</th></tr></thead>
+  tbl.innerHTML = `<thead><tr><th>Item</th><th>Site</th><th>Quantity</th><th>Threshold</th><th>Rate</th><th>Status</th><th></th></tr></thead>
     <tbody>${state.materials.map(m=>{
       const low = m.qty <= m.threshold;
       return `<tr>
@@ -1130,6 +1136,7 @@ function renderMaterials(){
         <td class="cell-mono muted">${m.threshold} ${m.unit}</td>
         <td class="cell-mono">${fmtMoney(m.rate)}</td>
         <td>${low?'<span class="badge badge-red">Reorder</span>':'<span class="badge badge-green">Adequate</span>'}</td>
+        <td><button class="btn btn-sm btn-ghost-danger" onclick="removeItem('materials','${m.id}')">Delete</button></td>
       </tr>`;
     }).join('')}</tbody>`;
   s.appendChild(tbl);
@@ -1155,7 +1162,7 @@ function openMaterialForm(){
 function renderLabour(){
   const s = sheet('Resources', 'Labour Records', `${state.labour.length} workers`);
   const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th>Worker</th><th>Role</th><th>Site</th><th>Daily Rate</th><th>Attendance</th></tr></thead>
+  tbl.innerHTML = `<thead><tr><th>Worker</th><th>Role</th><th>Site</th><th>Daily Rate</th><th>Attendance</th><th></th></tr></thead>
     <tbody>${state.labour.map(l=>{
       const pct = Math.round(l.attendance/l.days*100);
       return `<tr>
@@ -1167,6 +1174,7 @@ function renderLabour(){
           <div class="progress-track"><div class="progress-fill ${pct<80?'red':'green'}" style="width:${pct}%"></div></div>
           <span class="cell-mono" style="font-size:10.5px;">${l.attendance}/${l.days} days (${pct}%)</span>
         </td>
+        <td><button class="btn btn-sm btn-ghost-danger" onclick="removeItem('labour','${l.id}')">Delete</button></td>
       </tr>`;
     }).join('')}</tbody>`;
   s.appendChild(tbl);
@@ -1190,13 +1198,14 @@ function openLabourForm(){
 function renderEquipment(){
   const s = sheet('Resources', 'Equipment Tracking', `${state.equipment.length} units`);
   const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th>Equipment</th><th>Type</th><th>Assigned Site</th><th>Status</th></tr></thead>
+  tbl.innerHTML = `<thead><tr><th>Equipment</th><th>Type</th><th>Assigned Site</th><th>Status</th><th></th></tr></thead>
     <tbody>${state.equipment.map(e=>`
       <tr>
         <td><b>${e.name}</b></td>
         <td>${e.type}</td>
         <td class="muted">${e.site}</td>
         <td><span class="badge ${e.status==='In Use'?'badge-green':e.status==='Idle'?'badge-gray':'badge-amber'}">${e.status}</span></td>
+        <td><button class="btn btn-sm btn-ghost-danger" onclick="removeItem('equipment','${e.id}')">Delete</button></td>
       </tr>`).join('')}</tbody>`;
   s.appendChild(tbl);
   els.content.appendChild(s);
@@ -1218,7 +1227,7 @@ function openEquipmentForm(){
 function renderBilling(){
   const s = sheet('Finance', 'Invoices', `${state.invoices.length} invoices`);
   const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th>Invoice #</th><th>Project</th><th>Client</th><th>Amount</th><th>Date</th><th>Status</th></tr></thead>
+  tbl.innerHTML = `<thead><tr><th>Invoice #</th><th>Project</th><th>Client</th><th>Amount</th><th>Date</th><th>Status</th><th></th></tr></thead>
     <tbody>${state.invoices.map(i=>`
       <tr>
         <td class="cell-mono">${i.num}</td>
@@ -1227,6 +1236,7 @@ function renderBilling(){
         <td class="cell-mono">${fmtMoney(i.amount)}</td>
         <td class="cell-mono">${fmtDate(i.date)}</td>
         <td><span class="badge ${i.status==='Paid'?'badge-green':i.status==='Overdue'?'badge-red':'badge-amber'}">${i.status}</span></td>
+        <td><button class="btn btn-sm btn-ghost-danger" onclick="removeItem('invoices','${i.id}')">Delete</button></td>
       </tr>`).join('')}</tbody>`;
   s.appendChild(tbl);
   els.content.appendChild(s);
@@ -1234,7 +1244,7 @@ function renderBilling(){
 function openInvoiceForm(){
   openModal('New Invoice', [
     {k:'num', label:'Invoice Number', type:'text', req:true},
-    {k:'project', label:'Project', type:'select', options:state.projects.map(p=>p.name), req:true},
+    {k:'project', label:'Project', type:'select', options:state.projects.map(p=>p.project_name), req:true},
     {k:'client', label:'Client', type:'select', options:state.clients.map(c=>c.name), req:true},
     {k:'amount', label:'Amount (₹)', type:'number', req:true},
     {k:'date', label:'Date', type:'date', req:true},
@@ -1250,7 +1260,7 @@ function openInvoiceForm(){
 function renderPayments(){
   const s = sheet('Finance', 'Payment Records', `${state.payments.length} transactions`);
   const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th>Reference</th><th>To / From</th><th>Type</th><th>Amount</th><th>Method</th><th>Date</th><th>Status</th></tr></thead>
+  tbl.innerHTML = `<thead><tr><th>Reference</th><th>To / From</th><th>Type</th><th>Amount</th><th>Method</th><th>Date</th><th>Status</th><th></th></tr></thead>
     <tbody>${state.payments.map(p=>`
       <tr>
         <td class="cell-mono">${p.ref}</td>
@@ -1260,6 +1270,7 @@ function renderPayments(){
         <td>${p.method}</td>
         <td class="cell-mono">${fmtDate(p.date)}</td>
         <td><span class="badge ${p.status==='Completed'?'badge-green':'badge-amber'}">${p.status}</span></td>
+        <td><button class="btn btn-sm btn-ghost-danger" onclick="removeItem('payments','${p.id}')">Delete</button></td>
       </tr>`).join('')}</tbody>`;
   s.appendChild(tbl);
   els.content.appendChild(s);
@@ -1292,84 +1303,43 @@ function removeItem(key, id){
 function openModal(title, fields, onSubmit){
   const backdrop = document.getElementById('modal-backdrop');
   const modal = document.getElementById('modal');
-
   modal.innerHTML = `
     <button class="modal-close" id="modal-close">✕</button>
     <div class="sheet-title">${title}</div>
     <form id="modal-form">
-      ${fields.map(f => `
+      ${fields.map(f=>`
         <div class="field">
-          <label>${f.label}${f.req ? ' *' : ''}</label>
-          ${
-            f.type === 'select'
-              ? `<select name="${f.k}" ${f.req ? 'required' : ''}>
-                  <option value="">Select…</option>
-                  ${(f.options || []).map(o => `<option value="${o}">${o}</option>`).join('')}
-                </select>`
-              : f.type === 'textarea'
-                ? `<textarea name="${f.k}" ${f.req ? 'required' : ''}></textarea>`
-                : `<input type="${f.type}" name="${f.k}" ${f.req ? 'required' : ''}>`
-          }
-        </div>
-      `).join('')}
-
+          <label>${f.label}${f.req?' *':''}</label>
+          ${f.type==='select' ? `<select name="${f.k}" ${f.req?'required':''}>
+              <option value="">Select…</option>
+              ${(f.options||[]).map(o=>{
+                const val = (o && typeof o==='object') ? o.value : o;
+                const label = (o && typeof o==='object') ? o.label : o;
+                return `<option value="${val}">${label}</option>`;
+              }).join('')}
+            </select>`
+          : f.type==='textarea' ? `<textarea name="${f.k}" ${f.req?'required':''}></textarea>`
+          : `<input type="${f.type}" name="${f.k}" ${f.req?'required':''}>`}
+        </div>`).join('')}
       <div class="modal-actions">
         <button type="button" class="btn" id="modal-cancel">Cancel</button>
         <button type="submit" class="btn btn-primary">Save</button>
       </div>
     </form>
   `;
-
   backdrop.classList.add('open');
-
-  const close = () => backdrop.classList.remove('open');
-
+  const close = ()=> backdrop.classList.remove('open');
   document.getElementById('modal-close').onclick = close;
   document.getElementById('modal-cancel').onclick = close;
-
-  backdrop.onclick = e => {
-    if (e.target === backdrop) close();
-  };
-
-  document.getElementById('modal-form').addEventListener('submit', async e => {
+  backdrop.onclick = e => { if(e.target===backdrop) close(); };
+  document.getElementById('modal-form').onsubmit = e=>{
     e.preventDefault();
-    e.stopPropagation();
-
-    const fd = new FormData(e.currentTarget);
+    const fd = new FormData(e.target);
     const data = {};
-
-    fields.forEach(f => {
-      data[f.k] = fd.get(f.k);
-    });
-
-    try {
-      await onSubmit(data);
-    } catch (error) {
-      console.error('Modal submit failed:', error);
-    }
-
+    fields.forEach(f=> data[f.k] = fd.get(f.k));
+    onSubmit(data);
     close();
-  });
-}
-
-  e.preventDefault();
-  e.stopPropagation();
-
-  const fd = new FormData(e.currentTarget);
-  const data = {};
-
-  fields.forEach(f => {
-    data[f.k] = fd.get(f.k);
-  });
-
-  try {
-    await onSubmit(data);
-  } catch (error) {
-    console.error('Modal submit failed:', error);
-  }
-
-  close();
-});
+  };
 }
 const loginScreen = document.getElementById('login-screen');
 const app = document.getElementById('app');
@@ -1433,6 +1403,7 @@ loginForm.addEventListener('submit', async (event) => {
     updateUserRole();
 
     showApp();
+    await loadProjects();
     showView('dashboard');
 
   } catch (error) {
@@ -1442,11 +1413,7 @@ loginForm.addEventListener('submit', async (event) => {
   }
 });
 
-if (accessToken) {
-  showApp();
-} else {
-  showLogin();
-}
+showLogin();
 
 /* init */
 
