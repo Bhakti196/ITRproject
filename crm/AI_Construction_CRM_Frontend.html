@@ -2211,6 +2211,531 @@ purchaseNav.onclick = async () => {
 
 updatePurchaseCount();
 
+
+/* =======================================================
+   PAYROLL RECORDS — REAL API INTEGRATION
+======================================================= */
+
+if (!Array.isArray(state.payroll)) {
+  state.payroll = [];
+}
+
+if (!Array.isArray(state.employees)) {
+  state.employees = [];
+}
+
+async function payrollApi(endpoint = '', options = {}) {
+  const token =
+    localStorage.getItem('accessToken') ||
+    localStorage.getItem('access_token') ||
+    '';
+
+  const headers = {
+    'Content-Type': 'application/json'
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(
+    `${API_BASE}/payroll/records/${endpoint}`,
+    {
+      method: options.method || 'GET',
+      headers,
+      body: options.body
+        ? JSON.stringify(options.body)
+        : undefined
+    }
+  );
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Payroll API ${response.status}: ${text}`);
+  }
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  return await response.json();
+}
+
+
+async function loadEmployees() {
+  try {
+    const data = await apiFetch('/employees/');
+
+    state.employees = Array.isArray(data)
+      ? data
+      : (data.results || []);
+
+  } catch (error) {
+    console.error('Failed to load employees:', error);
+    state.employees = [];
+  }
+}
+
+
+async function loadPayroll() {
+  try {
+    const data = await payrollApi();
+
+    state.payroll = Array.isArray(data)
+      ? data
+      : (data.results || []);
+
+    updatePayrollCount();
+
+    if (currentView === 'payroll') {
+      renderPayroll();
+    }
+
+  } catch (error) {
+    console.error('Failed to load payroll records:', error);
+    toast('Could not load payroll records');
+  }
+}
+
+
+function updatePayrollCount() {
+  const el = document.getElementById('nc-payroll');
+
+  if (el) {
+    el.textContent = state.payroll.length || '';
+  }
+}
+
+
+function renderPayroll() {
+  const s = sheet(
+    'Finance',
+    'Payroll Records',
+    `${state.payroll.length} record(s)`
+  );
+
+  const actions = document.createElement('div');
+
+  actions.style.cssText = `
+    display:flex;
+    justify-content:flex-end;
+    margin-bottom:14px;
+  `;
+
+  actions.innerHTML = `
+    <button class="btn btn-primary" id="btn-new-payroll">
+      + New Payroll Record
+    </button>
+  `;
+
+  actions.querySelector('#btn-new-payroll').onclick =
+    openPayrollForm;
+
+  s.appendChild(actions);
+
+
+  if (!state.payroll.length) {
+    s.appendChild(
+      emptyEl(
+        'No payroll records yet — click "+ New Payroll Record" to create one.'
+      )
+    );
+
+    els.content.appendChild(s);
+    return;
+  }
+
+
+  const tbl = document.createElement('table');
+
+  tbl.innerHTML = `
+    <thead>
+      <tr>
+        <th>Employee</th>
+        <th>Project</th>
+        <th>Period</th>
+        <th>Basic Pay</th>
+        <th>Overtime</th>
+        <th>Net Pay</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+
+    <tbody>
+      ${state.payroll.map(p => `
+        <tr>
+
+          <td>
+            <b>${p.employee_name || p.employee || '—'}</b>
+          </td>
+
+          <td>
+            ${p.project_name || p.project || '—'}
+          </td>
+
+          <td class="cell-mono">
+            ${fmtDate(p.pay_period_start)} → ${fmtDate(p.pay_period_end)}
+          </td>
+
+          <td class="cell-mono">
+            ${fmtMoney(p.basic_pay || 0)}
+          </td>
+
+          <td class="cell-mono">
+            ${p.overtime_hours || 0} hrs
+          </td>
+
+          <td class="cell-mono">
+            <b>${fmtMoney(p.net_pay || 0)}</b>
+          </td>
+
+          <td>
+            <span class="badge ${
+              p.payment_status === 'PAID'
+                ? 'badge-green'
+                : p.payment_status === 'HOLD'
+                ? 'badge-red'
+                : 'badge-amber'
+            }">
+              ${p.payment_status || 'PENDING'}
+            </span>
+          </td>
+
+          <td>
+            ${p.payment_status !== 'PAID' ? `
+              <button
+                class="btn btn-sm"
+                onclick="markPayrollPaid(${p.id})">
+                Mark Paid
+              </button>
+            ` : ''}
+            <button
+              class="btn btn-sm btn-ghost-danger"
+              onclick="deletePayroll(${p.id})">
+              Delete
+            </button>
+          </td>
+
+        </tr>
+      `).join('')}
+    </tbody>
+  `;
+
+  s.appendChild(tbl);
+
+  els.content.appendChild(s);
+}
+
+
+function openPayrollForm() {
+
+  const projects = state.projects || [];
+  const employees = state.employees || [];
+
+  if (!projects.length) {
+    toast('Create a project first');
+    return;
+  }
+
+  if (!employees.length) {
+    toast('No employees found');
+    return;
+  }
+
+
+  openModal(
+    'New Payroll Record',
+
+    [
+      {
+        k: 'project',
+        label: 'Project',
+        type: 'select',
+        options: projects.map(p => ({
+          value: p.id,
+          label: p.project_name || p.name || `Project ${p.id}`
+        })),
+        req: true
+      },
+
+      {
+        k: 'employee',
+        label: 'Employee',
+        type: 'select',
+        options: employees.map(e => ({
+          value: e.id,
+          label: e.full_name || e.username || `User ${e.id}`
+        })),
+        req: true
+      },
+
+      {
+        k: 'pay_period_start',
+        label: 'Pay Period Start',
+        type: 'date',
+        req: true
+      },
+
+      {
+        k: 'pay_period_end',
+        label: 'Pay Period End',
+        type: 'date',
+        req: true
+      },
+
+      {
+        k: 'basic_pay',
+        label: 'Basic Pay (₹)',
+        type: 'number',
+        req: true,
+        min: 0,
+        step: 0.01
+      },
+
+      {
+        k: 'overtime_hours',
+        label: 'Overtime Hours',
+        type: 'number',
+        min: 0,
+        step: 0.01
+      },
+
+      {
+        k: 'overtime_rate',
+        label: 'Overtime Rate (₹/hr)',
+        type: 'number',
+        min: 0,
+        step: 0.01
+      },
+
+      {
+        k: 'allowances',
+        label: 'Allowances (₹)',
+        type: 'number',
+        min: 0,
+        step: 0.01
+      },
+
+      {
+        k: 'deductions',
+        label: 'Deductions (₹)',
+        type: 'number',
+        min: 0,
+        step: 0.01
+      },
+
+      {
+        k: 'payment_status',
+        label: 'Payment Status',
+        type: 'select',
+        options: [
+          { value: 'PENDING', label: 'Pending' },
+          { value: 'PAID', label: 'Paid' },
+          { value: 'HOLD', label: 'On Hold' }
+        ],
+        req: true
+      },
+
+      {
+        k: 'notes',
+        label: 'Notes',
+        type: 'textarea'
+      }
+
+    ],
+
+    async data => {
+
+      const basicPay = Number(data.basic_pay);
+
+      if (!Number.isFinite(basicPay) || basicPay < 0) {
+        toast('Basic pay cannot be negative');
+        return;
+      }
+
+      try {
+
+        await payrollApi('', {
+          method: 'POST',
+
+          body: {
+            project: Number(data.project),
+            employee: Number(data.employee),
+            pay_period_start: data.pay_period_start,
+            pay_period_end: data.pay_period_end,
+            basic_pay: basicPay,
+            overtime_hours: Number(data.overtime_hours) || 0,
+            overtime_rate: Number(data.overtime_rate) || 0,
+            allowances: Number(data.allowances) || 0,
+            deductions: Number(data.deductions) || 0,
+            payment_status: data.payment_status,
+            notes: data.notes ? data.notes.trim() : ''
+          }
+        });
+
+        toast('Payroll record created');
+
+        currentView = 'payroll';
+
+        document
+          .querySelectorAll('.nav-item')
+          .forEach(b => {
+            b.classList.toggle(
+              'active',
+              b.dataset.view === 'payroll'
+            );
+          });
+
+        document.getElementById('topbar-title').textContent =
+          'Payroll Records';
+
+        document.getElementById('topbar-crumb').textContent =
+          'Employees · Pay Periods · Net Pay';
+
+        els.content.innerHTML = '';
+
+        await loadPayroll();
+
+      } catch (error) {
+
+        console.error(error);
+
+        toast(
+          error.message ||
+          'Could not create payroll record'
+        );
+      }
+
+    }
+  );
+}
+
+
+async function markPayrollPaid(id) {
+  try {
+
+    await payrollApi(`${id}/`, {
+      method: 'PATCH',
+      body: {
+        payment_status: 'PAID',
+        payment_date: todayISO()
+      }
+    });
+
+    toast('Marked as paid');
+    await loadPayroll();
+
+  } catch (error) {
+    console.error(error);
+    toast(error.message || 'Could not update record');
+  }
+}
+
+
+async function deletePayroll(id) {
+
+  if (!confirm('Delete this payroll record?')) {
+    return;
+  }
+
+  try {
+
+    await payrollApi(`${id}/`, {
+      method: 'DELETE'
+    });
+
+    toast('Payroll record deleted');
+
+    await loadPayroll();
+
+  } catch (error) {
+
+    console.error(error);
+
+    toast(
+      error.message ||
+      'Could not delete payroll record'
+    );
+  }
+}
+
+
+/* =======================================================
+   PAYROLL NAVIGATION
+======================================================= */
+
+let payrollNav =
+  document.querySelector(
+    '.nav-item[data-view="payroll"]'
+  );
+
+
+if (!payrollNav) {
+
+  payrollNav =
+    document.createElement('button');
+
+  payrollNav.className = 'nav-item';
+
+  payrollNav.dataset.view = 'payroll';
+
+  payrollNav.innerHTML = `
+    <span>▣</span>
+    Payroll
+    <span class="count" id="nc-payroll"></span>
+  `;
+
+
+  const financeLabel =
+    [...document.querySelectorAll('.nav-group-label')]
+      .find(
+        el =>
+          el.textContent.trim() === 'Finance'
+      );
+
+
+  if (financeLabel) {
+    financeLabel.after(payrollNav);
+  }
+}
+
+
+payrollNav.onclick = async () => {
+
+  currentView = 'payroll';
+
+
+  document
+    .querySelectorAll('.nav-item')
+    .forEach(b => {
+      b.classList.toggle(
+        'active',
+        b.dataset.view === 'payroll'
+      );
+    });
+
+
+  document.getElementById('topbar-title').textContent =
+    'Payroll Records';
+
+
+  document.getElementById('topbar-crumb').textContent =
+    'Employees · Pay Periods · Net Pay';
+
+
+  els.content.innerHTML = '';
+
+  if (!state.employees.length) {
+    await loadEmployees();
+  }
+
+  await loadPayroll();
+};
+
+
+updatePayrollCount();
+
 </script>
 </body>
 </html>

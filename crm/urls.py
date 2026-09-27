@@ -25,7 +25,8 @@ urlpatterns = [
     path("api/equipment/", include("equipment.urls")),
     path("api/billing/", include("billing.urls")),
     path("api/payments/", include("payments.urls")),
-
+       path("api/payroll/", include("payroll.urls")),
+       
     # Purchase Management
     path("api/purchase/", include("purchase.urls")),
 

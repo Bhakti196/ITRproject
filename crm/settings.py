@@ -54,6 +54,8 @@ INSTALLED_APPS = [
     'ai_engine',
     'corsheaders',
     "purchase",
+    'payroll',
+
 
 ]
 

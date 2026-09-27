@@ -1,10 +1,11 @@
 from django.http import HttpResponse
 
-from rest_framework import status
+from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .models import CustomUser
 from .serializers import RegisterSerializer, UserProfileSerializer
 
 
@@ -33,3 +34,11 @@ class ProfileView(APIView):
     def get(self, request):
         serializer = UserProfileSerializer(request.user)
         return Response(serializer.data)
+
+
+class EmployeeListView(generics.ListAPIView):
+    """Lightweight list of users, used to populate employee pickers
+    (e.g. the Payroll 'employee' dropdown) in the frontend."""
+    queryset = CustomUser.objects.all().order_by("full_name")
+    serializer_class = UserProfileSerializer
+    permission_classes = [IsAuthenticated]
