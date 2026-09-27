@@ -14,3 +14,11 @@ class SiteListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
+
+class SiteDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = SiteSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Site.objects.filter(created_by=self.request.user)
