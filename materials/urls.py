@@ -2,7 +2,8 @@ from django.urls import path
 
 from .views import (
     MaterialListCreateView,
-    material_detail
+    MaterialDetailView,
+    material_transactions,
 )
 
 
@@ -15,7 +16,13 @@ urlpatterns = [
 
     path(
         "<int:pk>/",
-        material_detail,
+        MaterialDetailView.as_view(),
         name="material_detail"
+    ),
+
+    path(
+        "<int:pk>/transactions/",
+        material_transactions,
+        name="material_transactions"
     ),
 ]
