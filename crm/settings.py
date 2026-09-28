@@ -55,6 +55,9 @@ INSTALLED_APPS = [
     'corsheaders',
     "purchase",
     'payroll',
+    'project_team',
+    'incidents',
+    'estimates',
 
 
 ]
