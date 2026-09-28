@@ -1,11 +1,6 @@
-"""
-URL configuration for crm project.
-"""
-
 from django.contrib import admin
 from django.urls import include, path
 from accounts.views import home
-
 
 urlpatterns = [
     path("", home, name="home"),
@@ -34,6 +29,9 @@ urlpatterns = [
 
     # Purchase Management
     path("api/purchase/", include("purchase.urls")),
+
+    # Person V
+    path("api/clients/", include("clients.urls")),
 
     # AI
     path("api/ai/", include("ai_engine.urls")),

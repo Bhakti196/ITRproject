@@ -10,7 +10,9 @@ class SiteListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Site.objects.filter(created_by=self.request.user)
+        return Site.objects.filter(
+            created_by=self.request.user
+        )
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -21,4 +23,6 @@ class SiteDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Site.objects.filter(created_by=self.request.user)
+        return Site.objects.filter(
+            created_by=self.request.user
+        )

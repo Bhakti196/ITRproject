@@ -13,7 +13,20 @@ class LabourListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         return Labour.objects.filter(
             created_by=self.request.user
-        )
+        ).order_by("-created_at")
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        serializer.save(
+            created_by=self.request.user
+        )
+
+
+class LabourDetailView(generics.RetrieveUpdateDestroyAPIView):
+
+    serializer_class = LabourSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Labour.objects.filter(
+            created_by=self.request.user
+        )

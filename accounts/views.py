@@ -4,6 +4,7 @@ from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import CustomUser
 from .serializers import RegisterSerializer, UserProfileSerializer
@@ -14,7 +15,6 @@ def home(request):
 
 
 class RegisterView(APIView):
-
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
 
@@ -25,7 +25,38 @@ class RegisterView(APIView):
                 status=status.HTTP_201_CREATED
             )
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+class LoginView(APIView):
+    def post(self, request):
+        username = request.data.get("username")
+        password = request.data.get("password")
+
+        user = CustomUser.objects.filter(username=username).first()
+
+        if user is None or not user.check_password(password):
+            return Response(
+                {"detail": "Invalid username or password."},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        if not user.is_active:
+            return Response(
+                {"detail": "User account is inactive."},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        refresh = RefreshToken.for_user(user)
+
+        return Response({
+            "refresh": str(refresh),
+            "access": str(refresh.access_token),
+            "user": UserProfileSerializer(user).data,
+        })
 
 
 class ProfileView(APIView):
@@ -37,8 +68,6 @@ class ProfileView(APIView):
 
 
 class EmployeeListView(generics.ListAPIView):
-    """Lightweight list of users, used to populate employee pickers
-    (e.g. the Payroll 'employee' dropdown) in the frontend."""
     queryset = CustomUser.objects.all().order_by("full_name")
     serializer_class = UserProfileSerializer
     permission_classes = [IsAuthenticated]

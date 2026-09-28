@@ -38,8 +38,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    
-     'rest_framework',
+
+    'rest_framework',
     'accounts',
     'sites',
     'projects',
@@ -49,23 +49,27 @@ INSTALLED_APPS = [
     'labour',
     'contractors',
     'equipment',
-    "billing",
-    "payments",
+    'billing',
+    'payments',
+    'payroll',
+    'purchase',
     'ai_engine',
     'corsheaders',
-    "purchase",
-    'payroll',
+
+    # Person A modules
     'project_team',
     'incidents',
     'estimates',
 
-
+    # Person V module
+    'clients',
 ]
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -143,7 +147,13 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+
+# Custom User Model
+
 AUTH_USER_MODEL = 'accounts.CustomUser'
+
+
+# Django REST Framework
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -151,10 +161,16 @@ REST_FRAMEWORK = {
     ),
 }
 
+
+# JWT Settings
+
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
 }
+
+
+# CORS Settings
 
 CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:5500",

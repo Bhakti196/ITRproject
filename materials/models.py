@@ -47,3 +47,48 @@ class Material(models.Model):
 
     def __str__(self):
         return self.material_name
+
+
+class InventoryTransaction(models.Model):
+
+    TRANSACTION_TYPES = [
+        ("RECEIVE", "Receive"),
+        ("ISSUE", "Issue"),
+        ("CONSUME", "Consume"),
+    ]
+
+    material = models.ForeignKey(
+        Material,
+        on_delete=models.CASCADE,
+        related_name="transactions"
+    )
+
+    transaction_type = models.CharField(
+        max_length=20,
+        choices=TRANSACTION_TYPES
+    )
+
+    quantity = models.DecimalField(
+        max_digits=10,
+        decimal_places=2
+    )
+
+    notes = models.TextField(
+        blank=True
+    )
+
+    created_by = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    def __str__(self):
+        return (
+            f"{self.material.material_name} - "
+            f"{self.transaction_type} - "
+            f"{self.quantity}"
+        )

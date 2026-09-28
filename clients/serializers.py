@@ -1,11 +1,10 @@
 from rest_framework import serializers
+from .models import Client
 
-from .models import Task
 
-
-class TaskSerializer(serializers.ModelSerializer):
+class ClientSerializer(serializers.ModelSerializer):
 
     class Meta:
-        model = Task
+        model = Client
         fields = "__all__"
         read_only_fields = ["created_by", "created_at"]

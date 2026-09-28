@@ -13,7 +13,20 @@ class EquipmentListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         return Equipment.objects.filter(
             created_by=self.request.user
-        )
+        ).order_by("-created_at")
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        serializer.save(
+            created_by=self.request.user
+        )
+
+
+class EquipmentDetailView(generics.RetrieveUpdateDestroyAPIView):
+
+    serializer_class = EquipmentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Equipment.objects.filter(
+            created_by=self.request.user
+        )
